@@ -9,17 +9,17 @@ import time
 import re
 
 # 画面設定
-st.set_page_config(page_title="AI投資アナリスト・グローバル", layout="wide")
-st.title("🌐 AI投資ニュース・グローバル深層分析")
+st.set_page_config(page_title="AI投資アナリスト・コンプリート", layout="wide")
+st.title("🌐 AI投資ニュース・先物・経済指標深層分析")
 
 # --- サイドバー設定 ---
 api_key = st.sidebar.text_input("APIキーを入力してください", type="password")
 
 st.sidebar.markdown("---")
-# 【新機能】ターゲット市場の選択
+# 市場選択に「先物」を追加
 market_choice = st.sidebar.radio(
     "分析対象を選択",
-    options=["日本株", "米国株", "FX・為替"],
+    options=["日本株", "米国株", "先物・商品", "FX・為替"],
     horizontal=True
 )
 
@@ -38,11 +38,17 @@ selected_sectors = st.sidebar.multiselect("セクターを選択", options=SECTO
 # 銘柄リストの定義
 jp_stocks = "三菱重工, 川崎重工, IHI, ソニーg, ソニーfg, トヨタ, 任天堂, アストロスケール, 安川電機, 住友電工, フジクラ, 東レ, 本田技研, 日立製作所, 東北電力, シマノ, acsl, 日東電工, 三菱UFJ, サンリオ, KDDI, 川崎汽船, 商船三井, 日本郵船, 三菱hcキャピタル, 三菱ケミカル, 伊藤忠, 日東紡績, 三菱マテリアル, 小松製作所, 三菱商事, オリックス, 楽天グループ, 三井不動産, 三井物産, アドバンテスト, 東京エレクトロン, キーエンス, ファナック, 村田製作所, レーザーテック, イビデン, ディスコ, 信越化学工業, 第一生命, ヤマハ, 住友金属鉱山, エニーカラー, ソフトバンクg, キオクシア, 三井住友fg, みずほfg, QPSホールディングス, 名村造船所, カバー, inpex, ispace, スカパーjsat"
 us_stocks = "Alphabet, Apple, NVIDIA, Oracle, Palantir, Amazon, Bank of America, Tesla, Rocket Lab, Intel, Microsoft, Netflix, SanDisk, Adobe, Meta, Advantest, Boeing, Shopify, Novo Nordisk, Berkshire Hathaway, Exxon Mobil, Ford, General Motors, Spotify"
+future_items = "日経225先物, NYダウ先物, ナスダック100先物, WTI原油先物, 金先物(Gold), 銅先物, 天然ガス, 米国債10年"
+fx_pairs = "USD/JPY, EUR/JPY, GBP/JPY, AUD/JPY, EUR/USD"
 
 st.sidebar.markdown("---")
-st.sidebar.markdown(f"### 📝 {market_choice} 監視銘柄")
-current_default = us_stocks if market_choice == "米国株" else jp_stocks if market_choice == "日本株" else "USD/JPY, EUR/JPY, GBP/JPY, AUD/JPY"
-stock_input = st.sidebar.text_area("銘柄リスト", value=current_default, height=150)
+st.sidebar.markdown(f"### 📝 {market_choice} 監視対象")
+if market_choice == "米国株": current_default = us_stocks
+elif market_choice == "先物・商品": current_default = future_items
+elif market_choice == "FX・為替": current_default = fx_pairs
+else: current_default = jp_stocks
+
+stock_input = st.sidebar.text_area("リスト", value=current_default, height=150)
 WATCHLIST = [s.strip() for s in stock_input.replace("、", ",").split(",") if s.strip()]
 
 # セッション状態
@@ -60,18 +66,15 @@ async def generate_voice(text):
             audio_data += chunk["data"]
     return audio_data
 
-def get_all_news(hours, market):
-    """市場に合わせてソースを切り替えてニュース取得"""
+def get_all_news(hours):
+    """ニュースソースを取得"""
     rss_urls = [
         "https://news.yahoo.co.jp/rss/topics/business.xml",
         "https://news.yahoo.co.jp/rss/topics/world.xml",
         "https://jp.reuters.com/rss/businessNews",
         "https://jp.reuters.com/rss/worldNews",
+        "https://prtimes.jp/index.rdf"
     ]
-    # 米国株やFXの場合はロイターの海外版なども参考に含める（擬似的に追加）
-    if market != "日本株":
-        rss_urls.append("https://prtimes.jp/index.rdf") # 企業リリース
-    
     news_list = []
     seen_links = set()
     now = datetime.now(timezone.utc)
@@ -103,26 +106,24 @@ if st.sidebar.button(f"{market_choice} を分析"):
         genai.configure(api_key=api_key)
         model = genai.GenerativeModel("gemini-3.1-flash-lite-preview") 
         
-        with st.spinner(f"{market_choice}の情報を精査中..."):
-            news_data = get_all_news(hours_range, market_choice)
+        with st.spinner(f"{market_choice}と経済指標を精査中..."):
+            news_data = get_all_news(hours_range)
             st.session_state.fetched_news = news_data
             all_news_text = ""
             for i, n in enumerate(news_data):
                 all_news_text += f"No.{i} [{n['source']}]: {n['title']}\n{n['summary']}\n\n"
             
-            sector_target = ", ".join(selected_sectors) if selected_sectors else "全方位"
-            
             prompt = f"""
             あなたはプロの投資アナリストです。
+            
             【ターゲット市場】: {market_choice}
-            【重点セクター】: {sector_target}
-            【監視銘柄/通貨】: {', '.join(WATCHLIST)}
+            【監視対象】: {', '.join(WATCHLIST)}
             
             指示:
-            1. 過去{hours_range}時間のニュースから、上記市場および監視対象に関連する情報を抽出し、プロ視点で分析してください。
-            2. 【米国株】の場合、米国の金利動向、雇用統計、ハイテク企業の決算、地政学リスクが各銘柄に与える影響を重点的に。
-            3. 【FX・為替】の場合、各国中銀の政策、金利差、貿易統計、有事の円買い/ドル買い等の文脈を解説してください。
-            4. 具体的な銘柄名（または通貨ペア）を見出しにし、事実・意味・ポジネガを端的に記載。
+            1. 過去{hours_range}時間のニュースを分析してください。
+            2. 【FX・為替】または【先物】の場合、直近および近日予定されている「重要経済指標（雇用統計、CPI、FOMC等）」が、ドル円や指数にどのようなインパクトを与えるか予測を含めて解説してください。
+            3. 【先物・商品】の場合、原油や金などのコモディティ価格が、地政学リスクや為替とどう連動しているか紐解いてください。
+            4. 具体的な対象名を見出しにし、事実・意味・ポジネガを記載。
             5. 挨拶は不要。
             
             ニュースリスト:
@@ -142,7 +143,12 @@ if st.sidebar.button(f"{market_choice} を分析"):
 if st.session_state.analysis_text:
     col1, col2 = st.columns([1, 1])
     with col1:
-        st.subheader(f"📰 元記事 ({len(st.session_state.fetched_news)}件)")
+        # 左側には経済指標カレンダーも表示
+        st.subheader("📊 経済指標・元記事")
+        with st.expander("🕒 直近の注目経済指標カレンダー（目安）"):
+            st.write("※AIはニュース内の速報および市場予測値を元に分析しています。")
+            st.info("今週の注目: 米雇用統計(金)、CPI(水)、FOMC議事録")
+            
         for i, n in enumerate(st.session_state.fetched_news):
             with st.expander(f"No.{i}: 📌 [{n['time']}] {n['title']}"):
                 st.write(n['summary'])
@@ -160,7 +166,7 @@ if st.session_state.analysis_text:
         st.subheader("💬 深掘りチャット")
         for m in st.session_state.messages:
             with st.chat_message(m["role"]): st.markdown(m["content"])
-        if q := st.chat_input("この分析について詳しく！"):
+        if q := st.chat_input("この指標の結果、円安はどこまで進むと思う？"):
             st.session_state.messages.append({"role": "user", "content": q})
             with st.chat_message("user"): st.markdown(q)
             with st.chat_message("assistant"):
