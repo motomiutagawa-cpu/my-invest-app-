@@ -25,9 +25,16 @@ market_choice = st.sidebar.radio(
 st.sidebar.markdown("🕒 取得範囲")
 hours_range = st.sidebar.slider("過去何時間分を取得しますか？", min_value=1, max_value=72, value=24)
 
-# マスター銘柄リスト
+# もとみさん指定のマスター銘柄リスト（日本株の順番も整理しました）
 MASTER_STOCKS = {
-    "日本株": ["ソニーg", "ソニーfg", "アストロスケール", "QPSホールディングス", "acsl", "三菱重工", "川崎重工", "ihi", "安川電機", "住友電工", "古河電気工業", "フジクラ", "日本郵船", "商船三井", "川崎汽船", "日東電工", "東レ", "シマノ", "三菱UFJ", "みずほフィナンシャルグループ", "三井物産", "三菱商事", "kddi", "東北電力", "九州電力", "任天堂", "カバー", "トヨタ", "ホンダ", "日立製作所", "サンリオ", "inpex"],
+    "日本株": [
+        "ソニーg", "ソニーfg", "アストロスケール", "QPSホールディングス", "acsl", 
+        "三菱重工", "川崎重工", "ihi", "安川電機", "住友電工", "古河電気工業", 
+        "フジクラ", "日本郵船", "商船三井", "川崎汽船", "日東電工", "東レ", 
+        "シマノ", "三菱UFJ", "みずほフィナンシャルグループ", "三井物産", 
+        "三菱商事", "kddi", "東北電力", "九州電力", "任天堂", "カバー", 
+        "トヨタ", "ホンダ", "日立製作所", "サンリオ", "inpex"
+    ],
     "米国株": ["Apple", "NVIDIA", "Alphabet", "Amazon", "Tesla", "Microsoft", "Meta", "Palantir", "Rocket Lab", "Broadcom", "Berkshire Hathaway"],
     "先物・商品": ["日経225先物", "NYダウ先物", "ナスダック100先物", "WTI原油先物", "金先物(Gold)", "米国債10年"],
     "FX・為替": ["USD/JPY", "EUR/JPY", "GBP/JPY", "AUD/JPY", "EUR/USD"]
@@ -45,19 +52,21 @@ with st.sidebar.expander("🔍 注目セクターを選択"):
     selected_sectors = [s for s in SECTOR_OPTIONS if st.checkbox(s, key=f"sec_{s}", value=st.session_state.get(f"sec_{s}", False))]
 
 st.sidebar.markdown("---")
-with st.sidebar.expander(f"📝 {market_choice} 監視銘柄を選択", expanded=True):
+with st.sidebar.expander(f"📝 {market_choice} 監視銘柄（基本は全選択）", expanded=True):
     current_master = MASTER_STOCKS.get(market_choice, [])
     col_m1, col_m2 = st.columns(2)
     if col_m1.button("全選択", key="stk_all"):
         for s in current_master: st.session_state[f"stk_{s}"] = True
     if col_m2.button("全解除", key="stk_none"):
         for s in current_master: st.session_state[f"stk_{s}"] = False
+    
+    # 銘柄の個別チェックボックス（デフォルトでTrue=選択済み）
     selected_stocks = [s for s in current_master if st.checkbox(s, key=f"stk_{s}", value=st.session_state.get(f"stk_{s}", True))]
 
 custom_stocks = st.sidebar.text_input("その他追加銘柄（任意）")
 WATCHLIST = selected_stocks + ([custom_stocks] if custom_stocks else [])
 
-# セッション状態
+# セッション状態の管理
 if "analysis_text" not in st.session_state: st.session_state.analysis_text = None
 if "fetched_news" not in st.session_state: st.session_state.fetched_news = []
 if "individual_summaries" not in st.session_state: st.session_state.individual_summaries = {}
@@ -74,13 +83,7 @@ async def generate_voice(text):
     return audio_data
 
 def get_all_news(hours):
-    rss_urls = [
-        "https://news.yahoo.co.jp/rss/topics/business.xml",
-        "https://news.yahoo.co.jp/rss/topics/world.xml",
-        "https://jp.reuters.com/rss/businessNews",
-        "https://jp.reuters.com/rss/worldNews",
-        "https://prtimes.jp/index.rdf"
-    ]
+    rss_urls = ["https://news.yahoo.co.jp/rss/topics/business.xml", "https://news.yahoo.co.jp/rss/topics/world.xml", "https://jp.reuters.com/rss/businessNews", "https://jp.reuters.com/rss/worldNews", "https://prtimes.jp/index.rdf"]
     news_list, seen_links = [], set()
     now = datetime.now(timezone.utc)
     time_threshold = now - timedelta(hours=hours)
@@ -111,13 +114,13 @@ def analyze_single_article(title, summary):
     try:
         response = model.generate_content(prompt)
         return response.text
-    except Exception as e:
-        return f"要約エラー: {e}"
+    except:
+        return "要約中にエラーが発生しました。"
 
-# --- メイン実行 ---
+# --- 分析実行 ---
 if st.sidebar.button(f"{market_choice} 分析を開始"):
     if not api_key: st.error("APIキーを入れてください。")
-    elif not WATCHLIST: st.warning("銘柄を選択してください。")
+    elif not WATCHLIST: st.warning("分析対象を選んでください。")
     else:
         genai.configure(api_key=api_key)
         model = genai.GenerativeModel("gemini-3.1-flash-lite-preview")
@@ -132,11 +135,15 @@ if st.sidebar.button(f"{market_choice} 分析を開始"):
             
             prompt = f"""
             凄腕投資アナリストとして分析せよ。挨拶、免責事項、自己責任等の定型文は一切書くな。各分析には必ず根拠番号「(No.Xより)」を明記せよ。
-            【市場】: {market_choice}
-            【セクター】: {', '.join(selected_sectors)}
-            【監視銘柄】: {', '.join(WATCHLIST)}
             
-            銘柄を見出しにし「事実」「意味」「ポジネガ」を端的に記載せよ。
+            【基本方針】
+            監視銘柄リストにあるものを最優先で分析してください。
+            ただし、監視銘柄リストになくても、地政学リスクやセクター（{', '.join(selected_sectors)}）に関連する重要ニュースがあれば、積極的に他銘柄を挙げて提案してください。
+            
+            【市場】: {market_choice}
+            【監視コア銘柄】: {', '.join(WATCHLIST)}
+            
+            具体的銘柄を見出しにし、「事実」「意味」「ポジネガ」を端的に記載せよ。
             ニュースリスト: {all_news_text}
             """
             try:
@@ -144,9 +151,9 @@ if st.sidebar.button(f"{market_choice} 分析を開始"):
                 response = chat.send_message(prompt)
                 st.session_state.analysis_text = response.text
                 st.session_state.chat_session = chat
-            except Exception as e: st.error(f"分析エラー: {e}")
+            except Exception as e: st.error(f"エラー: {e}")
 
-# --- 表示エリア ---
+# --- 表示エリア（独立スクロール） ---
 if st.session_state.analysis_text:
     col1, col2 = st.columns([1, 1])
     
@@ -156,12 +163,9 @@ if st.session_state.analysis_text:
             for i, n in enumerate(st.session_state.fetched_news):
                 with st.expander(f"No.{i}: 📌 [{n['time']}] {n['title']}"):
                     st.write(n['summary'])
-                    # 個別要約ボタンのロジック
                     if st.button(f"✨ AI要約 (No.{i})", key=f"btn_{i}"):
                         with st.spinner("要約中..."):
-                            res = analyze_single_article(n['title'], n['summary'])
-                            st.session_state.individual_summaries[i] = res
-                    
+                            st.session_state.individual_summaries[i] = analyze_single_article(n['title'], n['summary'])
                     if i in st.session_state.individual_summaries:
                         st.info(st.session_state.individual_summaries[i])
                     st.link_button("全文へ", n['link'])
@@ -179,18 +183,12 @@ if st.session_state.analysis_text:
             st.markdown("---")
             
             for m in st.session_state.messages:
-                with st.chat_message(m["role"]):
-                    st.markdown(m["content"])
+                with st.chat_message(m["role"]): st.markdown(m["content"])
             
-            if q := st.chat_input("この結果についてさらに詳しく聞く..."):
+            if q := st.chat_input("さらに詳しく聞く..."):
                 st.session_state.messages.append({"role": "user", "content": q})
-                with st.chat_message("user"):
-                    st.markdown(q)
-                
+                with st.chat_message("user"): st.markdown(q)
                 with st.chat_message("assistant"):
-                    if st.session_state.chat_session:
-                        resp = st.session_state.chat_session.send_message(q)
-                        st.markdown(resp.text)
-                        st.session_state.messages.append({"role": "assistant", "content": resp.text})
-                    else:
-                        st.error("分析を先に開始してください。")
+                    resp = st.session_state.chat_session.send_message(q)
+                    st.markdown(resp.text)
+                    st.session_state.messages.append({"role": "assistant", "content": resp.text})
