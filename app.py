@@ -9,36 +9,40 @@ import time
 import re
 
 # 画面設定
-st.set_page_config(page_title="AI投資アナリスト・マルチ", layout="wide")
-st.title("🌐 AI投資ニュース・精密マルチセクター分析")
+st.set_page_config(page_title="AI投資アナリスト・グローバル", layout="wide")
+st.title("🌐 AI投資ニュース・グローバル深層分析")
 
 # --- サイドバー設定 ---
 api_key = st.sidebar.text_input("APIキーを入力してください", type="password")
 
 st.sidebar.markdown("---")
-st.sidebar.markdown("### 🕒 取得範囲の設定")
-hours_range = st.sidebar.slider("過去何時間分を取得しますか？", min_value=1, max_value=72, value=24)
-
-# 【大幅強化】セクター細分化と複数選択
-st.sidebar.markdown("---")
-st.sidebar.markdown("### 🔍 分析ターゲット（複数選択可）")
-SECTOR_OPTIONS = [
-    "防衛", "宇宙", "重工", "海運", "物流", "エネルギー", "資源・素材", 
-    "半導体", "ハイテク・IT", "金融・銀行", "商社", "自動車", 
-    "不動産", "電力・インフラ", "化学・素材"
-]
-selected_sectors = st.sidebar.multiselect(
-    "注目するセクターを選んでください",
-    options=SECTOR_OPTIONS,
-    default=[] # 空の場合は「全体」として扱います
+# 【新機能】ターゲット市場の選択
+market_choice = st.sidebar.radio(
+    "分析対象を選択",
+    options=["日本株", "米国株", "FX・為替"],
+    horizontal=True
 )
 
-# もとみさんの監視銘柄リスト
-default_stocks = "三菱重工, 川崎重工, IHI, ソニーg, ソニーfg, トヨタ, 任天堂, アストロスケール, 安川電機, 住友電工, 古河電気工業, フジクラ, 東レ, 本田技研, 日立製作所, 東北電力, シマノ, acsl, 日東電工, 三菱UFJ, サンリオ, KDDI, 川崎汽船, 商船三井, 日本郵船, 三菱hcキャピタル, 三菱ケミカル, 伊藤忠, 日東紡績, 三菱マテリアル, 小松製作所, 三菱商事, オリックス, 楽天グループ, 三井不動産, 三井物産, igポート, アドバンテスト, 東京エレクトロン, キーエンス, ファナック, 村田製作所, レーザーテック, イビデン, ディスコ, 信越化学工業, 第一生命, ヤマハ, 住友金属鉱山, エニーカラー, ソフトバンクg, キオクシア, 三井住友fg, みずほfg, QPSホールディングス, 名村造船所, カバー, inpex, ispace, スカパーjsat"
+st.sidebar.markdown("🕒 取得範囲")
+hours_range = st.sidebar.slider("過去何時間分を取得しますか？", min_value=1, max_value=72, value=24)
 
 st.sidebar.markdown("---")
-st.sidebar.markdown("### 📝 監視銘柄の編集")
-stock_input = st.sidebar.text_area("銘柄リスト", value=default_stocks, height=150)
+st.sidebar.markdown("### 🔍 注目セクター（複数選択可）")
+SECTOR_OPTIONS = [
+    "防衛", "宇宙", "重工", "海運", "物流", "エネルギー", "資源・素材", 
+    "半導体", "ハイテク・AI", "金融・銀行", "商社", "自動車", 
+    "不動産", "電力・インフラ", "化学・素材"
+]
+selected_sectors = st.sidebar.multiselect("セクターを選択", options=SECTOR_OPTIONS, default=[])
+
+# 銘柄リストの定義
+jp_stocks = "三菱重工, 川崎重工, IHI, ソニーg, ソニーfg, トヨタ, 任天堂, アストロスケール, 安川電機, 住友電工, フジクラ, 東レ, 本田技研, 日立製作所, 東北電力, シマノ, acsl, 日東電工, 三菱UFJ, サンリオ, KDDI, 川崎汽船, 商船三井, 日本郵船, 三菱hcキャピタル, 三菱ケミカル, 伊藤忠, 日東紡績, 三菱マテリアル, 小松製作所, 三菱商事, オリックス, 楽天グループ, 三井不動産, 三井物産, アドバンテスト, 東京エレクトロン, キーエンス, ファナック, 村田製作所, レーザーテック, イビデン, ディスコ, 信越化学工業, 第一生命, ヤマハ, 住友金属鉱山, エニーカラー, ソフトバンクg, キオクシア, 三井住友fg, みずほfg, QPSホールディングス, 名村造船所, カバー, inpex, ispace, スカパーjsat"
+us_stocks = "Alphabet, Apple, NVIDIA, Oracle, Palantir, Amazon, Bank of America, Tesla, Rocket Lab, Intel, Microsoft, Netflix, SanDisk, Adobe, Meta, Advantest, Boeing, Shopify, Novo Nordisk, Berkshire Hathaway, Exxon Mobil, Ford, General Motors, Spotify"
+
+st.sidebar.markdown("---")
+st.sidebar.markdown(f"### 📝 {market_choice} 監視銘柄")
+current_default = us_stocks if market_choice == "米国株" else jp_stocks if market_choice == "日本株" else "USD/JPY, EUR/JPY, GBP/JPY, AUD/JPY"
+stock_input = st.sidebar.text_area("銘柄リスト", value=current_default, height=150)
 WATCHLIST = [s.strip() for s in stock_input.replace("、", ",").split(",") if s.strip()]
 
 # セッション状態
@@ -56,15 +60,18 @@ async def generate_voice(text):
             audio_data += chunk["data"]
     return audio_data
 
-def get_all_news(hours):
-    """指定された時間以内のニュースを取得"""
+def get_all_news(hours, market):
+    """市場に合わせてソースを切り替えてニュース取得"""
     rss_urls = [
         "https://news.yahoo.co.jp/rss/topics/business.xml",
         "https://news.yahoo.co.jp/rss/topics/world.xml",
         "https://jp.reuters.com/rss/businessNews",
         "https://jp.reuters.com/rss/worldNews",
-        "https://prtimes.jp/index.rdf"
     ]
+    # 米国株やFXの場合はロイターの海外版なども参考に含める（擬似的に追加）
+    if market != "日本株":
+        rss_urls.append("https://prtimes.jp/index.rdf") # 企業リリース
+    
     news_list = []
     seen_links = set()
     now = datetime.now(timezone.utc)
@@ -80,31 +87,25 @@ def get_all_news(hours):
                     pub_time = datetime.fromtimestamp(time.mktime(pub_struct), timezone.utc)
                     if pub_time < time_threshold: continue
                 if entry.link in seen_links: continue
-                
                 news_list.append({
-                    "title": entry.title,
-                    "summary": entry.get("summary", ""),
-                    "link": entry.link,
-                    "source": source_name,
-                    "time": pub_time.astimezone(timezone(timedelta(hours=9))).strftime('%m/%d %H:%M') if pub_struct else "--:--"
+                    "title": entry.title, "summary": entry.get("summary", ""), "link": entry.link, 
+                    "source": source_name, "time": pub_time.astimezone(timezone(timedelta(hours=9))).strftime('%m/%d %H:%M') if pub_struct else "--:--"
                 })
                 seen_links.add(entry.link)
         except: continue
     return news_list
 
 # 分析実行
-button_label = f"選択した {len(selected_sectors)} セクターを分析" if selected_sectors else "全セクターを分析"
-if st.sidebar.button(button_label):
+if st.sidebar.button(f"{market_choice} を分析"):
     if not api_key:
         st.error("APIキーを入れてください！")
     else:
         genai.configure(api_key=api_key)
         model = genai.GenerativeModel("gemini-3.1-flash-lite-preview") 
         
-        with st.spinner("指定セクターを重点分析中..."):
-            news_data = get_all_news(hours_range)
+        with st.spinner(f"{market_choice}の情報を精査中..."):
+            news_data = get_all_news(hours_range, market_choice)
             st.session_state.fetched_news = news_data
-            
             all_news_text = ""
             for i, n in enumerate(news_data):
                 all_news_text += f"No.{i} [{n['source']}]: {n['title']}\n{n['summary']}\n\n"
@@ -113,21 +114,18 @@ if st.sidebar.button(button_label):
             
             prompt = f"""
             あなたはプロの投資アナリストです。
+            【ターゲット市場】: {market_choice}
+            【重点セクター】: {sector_target}
+            【監視銘柄/通貨】: {', '.join(WATCHLIST)}
             
-            【今回の重点分析ターゲット】
-            {sector_target}
-            
-            【監視銘柄リスト】
-            {', '.join(WATCHLIST)}
-            
-            【指示】
-            1. ニュースリスト（No.0〜）を読み、上記のターゲットセクターおよび監視銘柄に関連する地政学リスクや重要情報を抽出してください。
-            2. 見出しは必ず【銘柄名（証券コード）】とし、監視銘柄を最優先してください。
-            3. 監視銘柄以外でも、上記ターゲットに関連する重要な動きがあれば、代表銘柄を推測して分析に含めてください。
-            4. 各銘柄ごとに「事実」「地政学的な意味」「株価への影響（ポジネガ）」を端的に記載。
+            指示:
+            1. 過去{hours_range}時間のニュースから、上記市場および監視対象に関連する情報を抽出し、プロ視点で分析してください。
+            2. 【米国株】の場合、米国の金利動向、雇用統計、ハイテク企業の決算、地政学リスクが各銘柄に与える影響を重点的に。
+            3. 【FX・為替】の場合、各国中銀の政策、金利差、貿易統計、有事の円買い/ドル買い等の文脈を解説してください。
+            4. 具体的な銘柄名（または通貨ペア）を見出しにし、事実・意味・ポジネガを端的に記載。
             5. 挨拶は不要。
             
-            【ニュースリスト】
+            ニュースリスト:
             {all_news_text}
             """
             
@@ -144,14 +142,13 @@ if st.sidebar.button(button_label):
 if st.session_state.analysis_text:
     col1, col2 = st.columns([1, 1])
     with col1:
-        st.subheader(f"📰 元記事リスト ({len(st.session_state.fetched_news)}件)")
+        st.subheader(f"📰 元記事 ({len(st.session_state.fetched_news)}件)")
         for i, n in enumerate(st.session_state.fetched_news):
             with st.expander(f"No.{i}: 📌 [{n['time']}] {n['title']}"):
-                st.caption(f"ソース: {n['source']}")
                 st.write(n['summary'])
                 st.link_button("記事全文", n['link'])
     with col2:
-        st.subheader("🤖 AI 深層分析結果")
+        st.subheader(f"🤖 {market_choice} 分析結果")
         with st.spinner("音声を生成中..."):
             try:
                 audio_bytes = asyncio.run(generate_voice(st.session_state.analysis_text))
@@ -160,10 +157,10 @@ if st.session_state.analysis_text:
         st.write(st.session_state.analysis_text)
         
         st.markdown("---")
-        st.subheader("💬 チャットで深掘り")
+        st.subheader("💬 深掘りチャット")
         for m in st.session_state.messages:
             with st.chat_message(m["role"]): st.markdown(m["content"])
-        if q := st.chat_input("この分析についてさらに詳しく聞きたいことは？"):
+        if q := st.chat_input("この分析について詳しく！"):
             st.session_state.messages.append({"role": "user", "content": q})
             with st.chat_message("user"): st.markdown(q)
             with st.chat_message("assistant"):
