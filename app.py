@@ -19,11 +19,11 @@ st.markdown("""
         overflow-y: auto;
         padding-right: 10px;
     }
-    /* スクロールバーのデザイン */
     div[data-testid="column"]::-webkit-scrollbar { width: 6px; }
     div[data-testid="column"]::-webkit-scrollbar-thumb { background-color: #888; border-radius: 10px; }
-    /* サイドバーのチェックボックスを見やすく */
     .stCheckbox { margin-bottom: -15px; }
+    /* ボタンを横並びにするための調整 */
+    .stButton button { width: 100%; padding: 0.2rem; font-size: 0.8rem; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -42,15 +42,24 @@ market_choice = st.sidebar.radio(
 st.sidebar.markdown("🕒 取得範囲")
 hours_range = st.sidebar.slider("過去何時間分を取得しますか？", min_value=1, max_value=72, value=24)
 
-# --- 【改良】キーボードが出ない選択方式 ---
+# --- 【新機能】一括操作ボタン付き選択セクション ---
+
+# セクター選択
 st.sidebar.markdown("---")
 with st.sidebar.expander("🔍 注目セクターを選択", expanded=False):
     SECTOR_OPTIONS = ["防衛", "宇宙", "重工", "海運", "物流", "エネルギー", "資源・素材", "半導体", "ハイテク・AI", "金融・銀行", "商社", "自動車", "不動産", "電力・インフラ", "化学・素材"]
+    
+    col_s1, col_s2 = st.columns(2)
+    if col_s1.button("全選択", key="sec_all"):
+        for s in SECTOR_OPTIONS: st.session_state[f"sec_{s}"] = True
+    if col_s2.button("全解除", key="sec_none"):
+        for s in SECTOR_OPTIONS: st.session_state[f"sec_{s}"] = False
+        
     selected_sectors = [s for s in SECTOR_OPTIONS if st.checkbox(s, key=f"sec_{s}")]
 
+# 銘柄選択
 st.sidebar.markdown("---")
 with st.sidebar.expander(f"📝 {market_choice} 監視銘柄を選択", expanded=True):
-    # もとみさん指定のマスターリスト
     MASTER_STOCKS = {
         "日本株": ["ソニーg", "ソニーfg", "アストロスケール", "QPSホールディングス", "acsl", "三菱重工", "川崎重工", "ihi", "安川電機", "住友電工", "古河電気工業", "フジクラ", "日本郵船", "商船三井", "川崎汽船", "日東電工", "東レ", "シマノ", "三菱UFJ", "みずほフィナンシャルグループ", "三井物産", "三菱商事", "kddi", "東北電力", "九州電力", "任天堂", "カバー", "トヨタ", "ホンダ", "日立製作所", "サンリオ", "inpex"],
         "米国株": ["Apple", "NVIDIA", "Alphabet", "Amazon", "Tesla", "Microsoft", "Meta", "Palantir", "Rocket Lab", "Broadcom", "Berkshire Hathaway"],
@@ -59,8 +68,15 @@ with st.sidebar.expander(f"📝 {market_choice} 監視銘柄を選択", expanded
     }
     
     current_master = MASTER_STOCKS.get(market_choice, [])
-    # キーボードを出さないためにチェックボックスで並べる
-    selected_stocks = [s for s in current_master if st.checkbox(s, key=f"stk_{s}", value=True)]
+    
+    col_m1, col_m2 = st.columns(2)
+    if col_m1.button("全選択", key="stk_all"):
+        for s in current_master: st.session_state[f"stk_{s}"] = True
+    if col_m2.button("全解除", key="stk_none"):
+        for s in current_master: st.session_state[f"stk_{s}"] = False
+    
+    # セッション状態を反映させてチェックボックスを表示
+    selected_stocks = [s for s in current_master if st.checkbox(s, key=f"stk_{s}", value=st.session_state.get(f"stk_{s}", True))]
 
 custom_stocks = st.sidebar.text_input("その他追加したい銘柄（任意）", placeholder="ここだけキーボードが出ます")
 WATCHLIST = selected_stocks + ([custom_stocks] if custom_stocks else [])
@@ -72,6 +88,7 @@ if "fetched_news" not in st.session_state: st.session_state.fetched_news = []
 if "individual_summaries" not in st.session_state: st.session_state.individual_summaries = {}
 
 async def generate_voice(text):
+    # 記号掃除 & 1.3倍速
     clean_text = text.replace("#", "").replace("*", "").replace(">", " ")
     communicate = edge_tts.Communicate(clean_text, "ja-JP-NanamiNeural", rate="+30%")
     audio_data = b""
@@ -113,12 +130,13 @@ if st.sidebar.button(f"{market_choice} 分析を開始"):
                 all_news_text += f"No.{i}: {n['title']}\n{n['summary']}\n\n"
             
             prompt = f"""
-            凄腕投資アナリストとして分析せよ。挨拶、免責事項、自己責任等の定型文は一切書くな。各分析には必ず根拠番号「(No.Xより)」を明記せよ。
+            凄腕投資アナリストとして分析せよ。挨拶、免責事項、自己責任等の定型文は一切書くな。
+            各分析には必ず根拠番号「(No.Xより)」を文末に明記せよ。
             【市場】: {market_choice}
             【セクター】: {', '.join(selected_sectors) if selected_sectors else '全方位'}
             【監視銘柄】: {', '.join(WATCHLIST)}
             
-            具体的銘柄を見出しにし、「事実」「意味」「ポジネガ」を端的に記載。リスト外でも材料があれば積極的に提案せよ。
+            具体的銘柄を見出しにし、「事実」「意味」「ポジネガ」を端的に記載せよ。リスト外でも材料があれば積極的に提案せよ。
             ニュースリスト: {all_news_text}
             """
             try:
@@ -132,26 +150,3 @@ if st.sidebar.button(f"{market_choice} 分析を開始"):
 # --- 表示部分 ---
 if st.session_state.analysis_text:
     col1, col2 = st.columns([1, 1])
-    with col1:
-        st.subheader("📊 ニュースフィード")
-        for i, n in enumerate(st.session_state.fetched_news):
-            with st.expander(f"No.{i}: 📌 [{n['time']}] {n['title']}"):
-                st.write(n['summary'])
-                if st.button(f"✨ AI要約 (No.{i})", key=f"btn_{i}"):
-                    st.session_state.individual_summaries[i] = "分析中..." # 暫定
-                st.link_button("全文へ", n['link'])
-    with col2:
-        st.subheader(f"🤖 AI分析（1.3倍速）")
-        with st.spinner("音声を生成中..."):
-            try:
-                audio_bytes = asyncio.run(generate_voice(st.session_state.analysis_text))
-                st.audio(audio_bytes, format='audio/mp3')
-            except: st.warning("音声生成エラー")
-        st.write(st.session_state.analysis_text)
-        st.markdown("---")
-        if q := st.chat_input("深掘り質問"):
-            st.session_state.messages.append({"role": "user", "content": q})
-            with st.chat_message("user"): st.markdown(q)
-            with st.chat_message("assistant"):
-                res = st.session_state.chat_session.send_message(q)
-                st.markdown(res.text)
