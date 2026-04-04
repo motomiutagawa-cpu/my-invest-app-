@@ -1,10 +1,12 @@
 import streamlit as st
 import feedparser
 import google.generativeai as genai
+from gtts import gTTS
+import io
 
 # 画面設定
 st.set_page_config(page_title="AI投資アナリスト・プロ", layout="wide")
-st.title("🌐 マルチソース・AI投資ニュース分析")
+st.title("🌐 AI投資ニュース・プロ分析（音声対応版）")
 
 # サイドバー設定
 api_key = st.sidebar.text_input("APIキーを入力してください", type="password")
@@ -24,70 +26,41 @@ if "fetched_news" not in st.session_state: st.session_state.fetched_news = []
 def get_all_news():
     """Yahoo, ロイター, PR TIMESからニュースを統合して取得"""
     rss_urls = [
-        "https://news.yahoo.co.jp/rss/topics/business.xml", # Yahooビジネス
-        "https://news.yahoo.co.jp/rss/topics/world.xml",    # Yahoo国際
-        "https://jp.reuters.com/rss/businessNews",          # ロイター・ビジネス
-        "https://jp.reuters.com/rss/worldNews",             # ロイター・世界
-        "https://prtimes.jp/index.rdf"                      # PR TIMES (企業プレスリリース)
+        "https://news.yahoo.co.jp/rss/topics/business.xml",
+        "https://news.yahoo.co.jp/rss/topics/world.xml",
+        "https://jp.reuters.com/rss/businessNews",
+        "https://jp.reuters.com/rss/worldNews",
+        "https://prtimes.jp/index.rdf"
     ]
     news_list = []
-    seen_titles = set() # 重複ニュースを弾く
-
+    seen_titles = set()
     for url in rss_urls:
         try:
             feed = feedparser.parse(url)
             source_name = "Yahoo" if "yahoo" in url else "ロイター" if "reuters" in url else "PR TIMES"
-            
-            for entry in feed.entries[:15]: # 各ソースから上位15件
-                # 似たような見出しの重複を避ける
-                if entry.title[:15] in seen_titles: 
-                    continue
-                
-                news_list.append({
-                    "title": entry.title,
-                    "summary": entry.get("summary", ""),
-                    "link": entry.link,
-                    "source": source_name
-                })
+            for entry in feed.entries[:15]:
+                if entry.title[:15] in seen_titles: continue
+                news_list.append({"title": entry.title, "summary": entry.get("summary", ""), "link": entry.link, "source": source_name})
                 seen_titles.add(entry.title[:15])
-        except:
-            continue
-            
+        except: continue
     return news_list
 
 # 分析実行ボタン
-if st.sidebar.button("多角的なニュースをAIに丸投げ"):
+if st.sidebar.button("AI分析＆音声生成"):
     if not api_key:
         st.error("APIキーを入れてください！")
     else:
         genai.configure(api_key=api_key)
-        # もとみさんの環境で唯一成功した魔法のモデル
         model = genai.GenerativeModel("gemini-3.1-flash-lite-preview") 
         
-        with st.spinner("Yahoo, ロイター, PR TIMESを精査中..."):
+        with st.spinner("最新情報を分析中..."):
             news_data = get_all_news()
             st.session_state.fetched_news = news_data
-            
             all_news_text = ""
             for i, n in enumerate(news_data):
-                all_news_text += f"No.{i} [{n['source']}]: 【見出し】: {n['title']}\n【概要】: {n['summary']}\n\n"
+                all_news_text += f"No.{i} [{n['source']}]: {n['title']}\n{n['summary']}\n\n"
             
-            prompt = f"""
-            あなたはプロの投資アナリストです。
-            複数のソース（Yahoo, ロイター, PR TIMES）から集まったニュースを精査し、私の【監視銘柄リスト】に関連する材料や、地政学リスク等の重要情報を抽出して分析してください。
-            
-            【監視銘柄リスト】
-            {', '.join(WATCHLIST)}
-            
-            【ニュースリスト】
-            {all_news_text}
-            
-            【分析ルール】
-            1. 特に「地政学リスク」と「個別企業の独占材料（新技術・提携等）」を最優先。
-            2. 各銘柄（またはセクター）に対し、事実・地政学的な意味・株価へのポジネガを客観的に記載。
-            3. PR TIMES等のプレスリリースがあれば、企業の将来性に直結する投資判断として評価すること。
-            4. 挨拶は不要。
-            """
+            prompt = f"あなたはプロの投資アナリストです。以下のニュースから、監視銘柄（{', '.join(WATCHLIST)}）や地政学リスクに関連する重要情報を抽出し、銘柄別に事実・意味・株価へのポジネガを客観的に分析してください。挨拶は不要です。\n\n{all_news_text}"
             
             try:
                 chat = model.start_chat(history=[])
@@ -96,32 +69,39 @@ if st.sidebar.button("多角的なニュースをAIに丸投げ"):
                 st.session_state.chat_session = chat
                 st.session_state.messages = []
             except Exception as e:
-                st.error(f"分析中にエラーが発生しました: {e}")
+                st.error(f"エラー: {e}")
 
 # --- 表示部分 ---
 if st.session_state.analysis_text:
     col1, col2 = st.columns([1, 1])
 
     with col1:
-        st.subheader("📰 統合ニュースフィード")
-        st.caption("Yahoo / Reuters / PR TIMES から取得")
+        st.subheader("📰 ニュースフィード")
         for n in st.session_state.fetched_news:
-            # ソースごとにバッジの色を変える
-            source_tag = f"[{n['source']}]"
-            with st.expander(f"📌 {source_tag} {n['title']}"):
+            with st.expander(f"📌 [{n['source']}] {n['title']}"):
                 st.write(n['summary'])
-                st.link_button("記事全文を読む", n['link'])
+                st.link_button("記事全文", n['link'])
 
     with col2:
-        st.subheader("🤖 AIによる多角的分析")
+        st.subheader("🤖 AI分析結果")
+        
+        # --- 音声読み上げ機能の追加 ---
+        try:
+            tts = gTTS(text=st.session_state.analysis_text, lang='ja')
+            audio_fp = io.BytesIO()
+            tts.write_to_fp(audio_fp)
+            st.audio(audio_fp, format='audio/mp3')
+        except Exception as e:
+            st.warning("音声の生成に失敗しました。")
+
         st.write(st.session_state.analysis_text)
         
         st.markdown("---")
-        st.subheader("💬 この結果をさらに深掘り")
+        st.subheader("💬 チャットで深掘り")
         for m in st.session_state.messages:
             with st.chat_message(m["role"]): st.markdown(m["content"])
         
-        if q := st.chat_input("この中東リスク、海運株にはいつまで影響しそう？"):
+        if q := st.chat_input("この材料についてもっと詳しく教えて？"):
             st.session_state.messages.append({"role": "user", "content": q})
             with st.chat_message("user"): st.markdown(q)
             with st.chat_message("assistant"):
