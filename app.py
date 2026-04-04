@@ -11,7 +11,7 @@ import yfinance as yf
 # 画面設定
 st.set_page_config(page_title="AI投資アナリスト・エグゼクティブ", layout="wide")
 
-st.title("🌐 AI投資ニュース・プロ分析（株価・連想分析版）")
+st.title("🌐 AI投資ニュース・プロ分析（全機能統合版）")
 
 # --- サイドバー設定 ---
 api_key = st.sidebar.text_input("APIキーを入力", type="password")
@@ -63,7 +63,6 @@ if "chat_session" not in st.session_state: st.session_state.chat_session = None
 
 # --- 株価取得関数 ---
 def get_price_info(stock_str, market):
-    """銘柄名/コードから株価と騰落率を取得"""
     items = [s.strip() for s in stock_str.replace("、", ",").split(",") if s.strip()]
     price_data = ""
     for item in items:
@@ -114,6 +113,16 @@ def get_all_news(hours):
         except: continue
     return news_list
 
+def analyze_single_article(title, summary):
+    genai.configure(api_key=api_key)
+    model = genai.GenerativeModel("gemini-3.1-flash-lite-preview")
+    prompt = f"投資家視点で3行要約し、株価材料としてのポジネガを判定せよ。免責文や挨拶は不要。\n【タイトル】: {title}\n【本文】: {summary}"
+    try:
+        response = model.generate_content(prompt)
+        return response.text
+    except Exception as e:
+        return f"要約エラー: {e}"
+
 # --- メイン分析実行 ---
 if st.sidebar.button(f"{market_choice} 分析を開始"):
     if not api_key: st.error("APIキーを入れてください。")
@@ -123,6 +132,8 @@ if st.sidebar.button(f"{market_choice} 分析を開始"):
         with st.spinner("株価データとニュースを照合中..."):
             news_data = get_all_news(hours_range)
             st.session_state.fetched_news = news_data
+            st.session_state.individual_summaries = {}
+            st.session_state.messages = []
             
             # 株価情報の取得
             target_for_price = narrow_stocks if narrow_stocks else CORE_WATCHLIST.get(market_choice)
@@ -160,18 +171,25 @@ if st.sidebar.button(f"{market_choice} 分析を開始"):
                 response = chat.send_message(prompt)
                 st.session_state.analysis_text = response.text
                 st.session_state.chat_session = chat
-                st.session_state.messages = []
             except Exception as e: st.error(f"分析エラー: {e}")
 
 # --- 画面表示（独立スクロール） ---
 if st.session_state.analysis_text:
     col1, col2 = st.columns([1, 1])
+    
     with col1:
         st.subheader("📊 ニュースフィード")
         with st.container(height=800):
             for i, n in enumerate(st.session_state.fetched_news):
                 with st.expander(f"No.{i}: 📌 [{n['time']}] {n['title']}"):
                     st.write(n['summary'])
+                    # --- ここが消えていた「AI要約」ボタンの復活部分です ---
+                    if st.button(f"✨ AI要約 (No.{i})", key=f"btn_{i}"):
+                        with st.spinner("要約中..."):
+                            st.session_state.individual_summaries[i] = analyze_single_article(n['title'], n['summary'])
+                    if i in st.session_state.individual_summaries:
+                        st.info(st.session_state.individual_summaries[i])
+                    # ---------------------------------------------------------
                     st.link_button("全文へ", n['link'])
                 
     with col2:
