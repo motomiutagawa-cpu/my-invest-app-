@@ -9,13 +9,18 @@ import time
 import re
 
 # 画面設定
-st.set_page_config(page_title="AI投資アナリスト・完全版", layout="wide")
-st.title("🌐 AI投資ニュース・24時間全件スキャン")
+st.set_page_config(page_title="AI投資アナリスト・カスタム", layout="wide")
+st.title("🌐 AI投資ニュース・タイムレンジ分析")
 
-# サイドバー設定
+# --- サイドバー設定 ---
 api_key = st.sidebar.text_input("APIキーを入力してください", type="password")
 
-default_stocks = "三菱重工, 川崎重工, IHI, ソニーg, ソニーfg, 任天堂, アストロスケール, 安川電機, 住友電工, フジクラ, 東レ, 本田技研, 日立製作所, 東北電力, シマノ, acsl, 日東電工, 三菱UFJ, サンリオ, KDDI, 川崎汽船, 商船三井, 日本郵船, VALUENEX, 三菱hcキャピタル, 三菱ケミカル, 伊藤忠, 日東紡績, 三菱マテリアル, 小松製作所, 三菱商事, オリックス, 楽天グループ, 三井物産, メタプラネット, アドバンテスト, 東京エレクトロン, キーエンス, レーザーテック, ディスコ, 信越化学工業, ソフトバンクg, キオクシア, みずほfg, QPSホールディングス, 名村造船所, カバー, inpex, ispace, スカパーjsat"
+# 【新規】時間範囲を選択するスライダー
+st.sidebar.markdown("---")
+st.sidebar.markdown("### 🕒 取得範囲の設定")
+hours_range = st.sidebar.slider("過去何時間分を取得しますか？", min_value=1, max_value=72, value=24)
+
+default_stocks = "三菱重工, 川崎重工, IHI, ソニーg, ソニーfg, 任天堂, アストロスケール, 安川電機, 住友電工, フジクラ, 東レ, 本田技研, 日立製作所, 東北電力, シマノ, acsl, 日東電工, 三菱UFJ, サンリオ, KDDI, 川崎汽船, 商船三井, 日本郵船, VALUENEX, 三菱hcキャピタル, 伊藤忠, 日東紡績, 三菱商事, オリックス, 楽天グループ, 三井物産, メタプラネット, アドバンテスト, 東京エレクトロン, キーエンス, レーザーテック, ディスコ, 信越化学工業, ソフトバンクg, キオクシア, みずほfg, QPSホールディングス, 名村造船所, カバー, inpex, ispace, スカパーjsat"
 
 st.sidebar.markdown("---")
 st.sidebar.markdown("### 📝 監視銘柄の編集")
@@ -29,10 +34,7 @@ if "fetched_news" not in st.session_state: st.session_state.fetched_news = []
 
 async def generate_voice(text):
     """読み上げ前に記号を掃除し、1.3倍速で生成"""
-    # 記号の掃除
     clean_text = text.replace("#", "").replace("*", "").replace(">", " ")
-    
-    # rate="+30%" で約1.3倍速（1.5倍より少しゆったり）
     communicate = edge_tts.Communicate(clean_text, "ja-JP-NanamiNeural", rate="+30%")
     audio_data = b""
     async for chunk in communicate.stream():
@@ -40,8 +42,8 @@ async def generate_voice(text):
             audio_data += chunk["data"]
     return audio_data
 
-def get_all_news():
-    """過去24時間以内のニュースを全件取得"""
+def get_all_news(hours):
+    """指定された時間以内のニュースを全件取得"""
     rss_urls = [
         "https://news.yahoo.co.jp/rss/topics/business.xml",
         "https://news.yahoo.co.jp/rss/topics/world.xml",
@@ -52,7 +54,8 @@ def get_all_news():
     news_list = []
     seen_links = set()
     now = datetime.now(timezone.utc)
-    one_day_ago = now - timedelta(hours=24)
+    # スライダーで選んだ時間分だけ遡る
+    time_threshold = now - timedelta(hours=hours)
 
     for url in rss_urls:
         try:
@@ -62,7 +65,7 @@ def get_all_news():
                 pub_struct = entry.get("published_parsed") or entry.get("updated_parsed")
                 if pub_struct:
                     pub_time = datetime.fromtimestamp(time.mktime(pub_struct), timezone.utc)
-                    if pub_time < one_day_ago: continue
+                    if pub_time < time_threshold: continue
                 if entry.link in seen_links: continue
                 
                 news_list.append({
@@ -70,31 +73,31 @@ def get_all_news():
                     "summary": entry.get("summary", ""),
                     "link": entry.link,
                     "source": source_name,
-                    "time": pub_time.astimezone(timezone(timedelta(hours=9))).strftime('%H:%M') if pub_struct else "--:--"
+                    "time": pub_time.astimezone(timezone(timedelta(hours=9))).strftime('%m/%d %H:%M') if pub_struct else "--:--"
                 })
                 seen_links.add(entry.link)
         except: continue
     return news_list
 
-if st.sidebar.button("24時間全ニュースを分析"):
+# ボタン表示に時間を反映
+if st.sidebar.button(f"過去 {hours_range} 時間のニュースを分析"):
     if not api_key:
         st.error("APIキーを入れてください！")
     else:
         genai.configure(api_key=api_key)
         model = genai.GenerativeModel("gemini-3.1-flash-lite-preview") 
         
-        with st.spinner("過去24時間の全ニュースを精査中..."):
-            news_data = get_all_news()
+        with st.spinner(f"過去 {hours_range} 時間の全情報を精査中..."):
+            news_data = get_all_news(hours_range)
             st.session_state.fetched_news = news_data
             
             all_news_text = ""
             for i, n in enumerate(news_data):
-                # AIに渡すテキストに明示的にNo.を付与
                 all_news_text += f"No.{i} [{n['source']} {n['time']}]: {n['title']}\n{n['summary']}\n\n"
             
             prompt = f"""
             あなたはプロの投資アナリストです。
-            ニュースリスト（No.0から順に記載）を読み、私の監視銘柄に関連する地政学リスクや重要情報を分析してください。
+            過去{hours_range}時間のニュースリスト（No.0から順に記載）を読み、私の監視銘柄に関連する地政学リスクや重要情報を分析してください。
             どのニュースに対する言及か分かるよう、適宜「No.Xのニュースによれば〜」と補足しながら、銘柄別にポジネガを判定してください。
             挨拶は不要です。
             
@@ -116,8 +119,7 @@ if st.session_state.analysis_text:
     col1, col2 = st.columns([1, 1])
 
     with col1:
-        st.subheader(f"📰 直近24時間の関連ニュース ({len(st.session_state.fetched_news)}件)")
-        # ニュースリストにもAIと同じ「No.」を表示
+        st.subheader(f"📰 抽出ニュース ({len(st.session_state.fetched_news)}件)")
         for i, n in enumerate(st.session_state.fetched_news):
             with st.expander(f"No.{i}: 📌 [{n['time']}] {n['title']}"):
                 st.caption(f"ソース: {n['source']}")
@@ -125,7 +127,7 @@ if st.session_state.analysis_text:
                 st.link_button("記事全文", n['link'])
 
     with col2:
-        st.subheader("🤖 AI 24時間深層分析")
+        st.subheader(f"🤖 AI {hours_range}時間分析結果")
         with st.spinner("1.3倍速音声を生成中..."):
             try:
                 audio_bytes = asyncio.run(generate_voice(st.session_state.analysis_text))
@@ -137,7 +139,7 @@ if st.session_state.analysis_text:
         st.subheader("💬 チャットで深掘り")
         for m in st.session_state.messages:
             with st.chat_message(m["role"]): st.markdown(m["content"])
-        if q := st.chat_input("この24時間の動きで一番警戒すべきは？"):
+        if q := st.chat_input(f"過去{hours_range}時間の動きで注目すべきは？"):
             st.session_state.messages.append({"role": "user", "content": q})
             with st.chat_message("user"): st.markdown(q)
             with st.chat_message("assistant"):
