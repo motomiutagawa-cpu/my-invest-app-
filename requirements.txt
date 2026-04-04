@@ -2,3 +2,4 @@ streamlit
 feedparser
 google-generativeai
 edge-tts
+yfinance
