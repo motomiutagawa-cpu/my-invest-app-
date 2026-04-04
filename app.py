@@ -6,6 +6,7 @@ import edge_tts
 import io
 from datetime import datetime, timedelta, timezone
 import time
+import re
 
 # 画面設定
 st.set_page_config(page_title="AI投資アナリスト・完全版", layout="wide")
@@ -27,8 +28,11 @@ if "analysis_text" not in st.session_state: st.session_state.analysis_text = Non
 if "fetched_news" not in st.session_state: st.session_state.fetched_news = []
 
 async def generate_voice(text):
-    """音声を1.5倍速で生成"""
-    communicate = edge_tts.Communicate(text, "ja-JP-NanamiNeural", rate="+50%")
+    """読み上げ前に不要な記号を掃除して1.5倍速で生成"""
+    # 掃除：ハッシュタグ(#)や太字用の星印(*)を消去して、読み上げをスムーズにする
+    clean_text = text.replace("#", "").replace("*", "").replace(">", " ")
+    
+    communicate = edge_tts.Communicate(clean_text, "ja-JP-NanamiNeural", rate="+50%")
     audio_data = b""
     async for chunk in communicate.stream():
         if chunk["type"] == "audio":
@@ -53,17 +57,11 @@ def get_all_news():
         try:
             feed = feedparser.parse(url)
             source_name = "Yahoo" if "yahoo" in url else "ロイター" if "reuters" in url else "PR TIMES"
-            
-            # 各フィードから最大100件スキャン
             for entry in feed.entries[:100]:
-                # 公開時間のチェック
                 pub_struct = entry.get("published_parsed") or entry.get("updated_parsed")
                 if pub_struct:
                     pub_time = datetime.fromtimestamp(time.mktime(pub_struct), timezone.utc)
-                    # 24時間より古いニュースはスキップ
-                    if pub_time < one_day_ago:
-                        continue
-                
+                    if pub_time < one_day_ago: continue
                 if entry.link in seen_links: continue
                 
                 news_list.append({
@@ -75,8 +73,6 @@ def get_all_news():
                 })
                 seen_links.add(entry.link)
         except: continue
-    
-    # 時間が新しい順に並び替え
     return news_list
 
 if st.sidebar.button("24時間全ニュースを分析"):
@@ -89,25 +85,11 @@ if st.sidebar.button("24時間全ニュースを分析"):
         with st.spinner("過去24時間の全ニュースを精査中..."):
             news_data = get_all_news()
             st.session_state.fetched_news = news_data
-            
             all_news_text = ""
             for i, n in enumerate(news_data):
                 all_news_text += f"No.{i} [{n['source']} {n['time']}]: {n['title']}\n{n['summary']}\n\n"
             
-            prompt = f"""
-            あなたはプロの投資アナリストです。過去24時間の全ニュースから、私の【監視銘柄リスト】に関連する材料や、地政学リスク、日本株に影響する重要情報を厳選して分析してください。
-            
-            【監視銘柄リスト】
-            {', '.join(WATCHLIST)}
-            
-            【ニュースリスト】
-            {all_news_text}
-            
-            【出力ルール】
-            1. 銘柄名を見出しにし、事実・意味・株価へのポジネガ（1-2行）を客観的に記載。
-            2. 24時間以内の古い情報でも、今日の相場に影響しそうなものは含めること。
-            3. 前置きや挨拶は一切不要。
-            """
+            prompt = f"あなたはプロの投資アナリストです。以下のニュースから、監視銘柄や地政学リスク、日本株に影響する重要情報を厳選して銘柄別に事実・意味・株価へのポジネガを分析してください。挨拶は不要です。\n\n{all_news_text}"
             
             try:
                 chat = model.start_chat(history=[])
