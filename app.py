@@ -15,7 +15,7 @@ st.title("🌐 AI投資ニュース・24時間全件スキャン")
 # サイドバー設定
 api_key = st.sidebar.text_input("APIキーを入力してください", type="password")
 
-default_stocks = "三菱重工, 川崎重工, IHI, ソニーg, ソニーfg, 任天堂, アストロスケール, 安川電機, 住友電工, フジクラ, 東レ, 本田技研, 日立製作所, 東北電力, シマノ, acsl, 日東電工, 三菱UFJ, サンリオ, KDDI, 川崎汽船, 商船三井, 日本郵船, VALUENEX, 三菱hcキャピタル, 伊藤忠, 日東紡績, 三菱商事, オリックス, 楽天グループ, 三井物産, メタプラネット, アドバンテスト, 東京エレクトロン, キーエンス, レーザーテック, ディスコ, 信越化学工業, ソフトバンクg, キオクシア, みずほfg, QPSホールディングス, 名村造船所, カバー, inpex, ispace, スカパーjsat"
+default_stocks = "三菱重工, 川崎重工, IHI, ソニーg, ソニーfg, 任天堂, アストロスケール, 安川電機, 住友電工, フジクラ, 東レ, 本田技研, 日立製作所, 東北電力, シマノ, acsl, 日東電工, 三菱UFJ, サンリオ, KDDI, 川崎汽船, 商船三井, 日本郵船, VALUENEX, 三菱hcキャピタル, 三菱ケミカル, 伊藤忠, 日東紡績, 三菱マテリアル, 小松製作所, 三菱商事, オリックス, 楽天グループ, 三井物産, メタプラネット, アドバンテスト, 東京エレクトロン, キーエンス, レーザーテック, ディスコ, 信越化学工業, ソフトバンクg, キオクシア, みずほfg, QPSホールディングス, 名村造船所, カバー, inpex, ispace, スカパーjsat"
 
 st.sidebar.markdown("---")
 st.sidebar.markdown("### 📝 監視銘柄の編集")
@@ -28,11 +28,12 @@ if "analysis_text" not in st.session_state: st.session_state.analysis_text = Non
 if "fetched_news" not in st.session_state: st.session_state.fetched_news = []
 
 async def generate_voice(text):
-    """読み上げ前に不要な記号を掃除して1.5倍速で生成"""
-    # 掃除：ハッシュタグ(#)や太字用の星印(*)を消去して、読み上げをスムーズにする
+    """読み上げ前に記号を掃除し、1.3倍速で生成"""
+    # 記号の掃除
     clean_text = text.replace("#", "").replace("*", "").replace(">", " ")
     
-    communicate = edge_tts.Communicate(clean_text, "ja-JP-NanamiNeural", rate="+50%")
+    # rate="+30%" で約1.3倍速（1.5倍より少しゆったり）
+    communicate = edge_tts.Communicate(clean_text, "ja-JP-NanamiNeural", rate="+30%")
     audio_data = b""
     async for chunk in communicate.stream():
         if chunk["type"] == "audio":
@@ -85,11 +86,21 @@ if st.sidebar.button("24時間全ニュースを分析"):
         with st.spinner("過去24時間の全ニュースを精査中..."):
             news_data = get_all_news()
             st.session_state.fetched_news = news_data
+            
             all_news_text = ""
             for i, n in enumerate(news_data):
+                # AIに渡すテキストに明示的にNo.を付与
                 all_news_text += f"No.{i} [{n['source']} {n['time']}]: {n['title']}\n{n['summary']}\n\n"
             
-            prompt = f"あなたはプロの投資アナリストです。以下のニュースから、監視銘柄や地政学リスク、日本株に影響する重要情報を厳選して銘柄別に事実・意味・株価へのポジネガを分析してください。挨拶は不要です。\n\n{all_news_text}"
+            prompt = f"""
+            あなたはプロの投資アナリストです。
+            ニュースリスト（No.0から順に記載）を読み、私の監視銘柄に関連する地政学リスクや重要情報を分析してください。
+            どのニュースに対する言及か分かるよう、適宜「No.Xのニュースによれば〜」と補足しながら、銘柄別にポジネガを判定してください。
+            挨拶は不要です。
+            
+            【ニュースリスト】
+            {all_news_text}
+            """
             
             try:
                 chat = model.start_chat(history=[])
@@ -106,15 +117,16 @@ if st.session_state.analysis_text:
 
     with col1:
         st.subheader(f"📰 直近24時間の関連ニュース ({len(st.session_state.fetched_news)}件)")
-        for n in st.session_state.fetched_news:
-            with st.expander(f"📌 [{n['time']}] {n['title']}"):
+        # ニュースリストにもAIと同じ「No.」を表示
+        for i, n in enumerate(st.session_state.fetched_news):
+            with st.expander(f"No.{i}: 📌 [{n['time']}] {n['title']}"):
                 st.caption(f"ソース: {n['source']}")
                 st.write(n['summary'])
                 st.link_button("記事全文", n['link'])
 
     with col2:
         st.subheader("🤖 AI 24時間深層分析")
-        with st.spinner("1.5倍速音声を生成中..."):
+        with st.spinner("1.3倍速音声を生成中..."):
             try:
                 audio_bytes = asyncio.run(generate_voice(st.session_state.analysis_text))
                 st.audio(audio_bytes, format='audio/mp3')
