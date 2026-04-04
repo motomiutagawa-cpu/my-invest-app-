@@ -10,7 +10,7 @@ import re
 
 # 画面設定
 st.set_page_config(page_title="AI投資アナリスト・プロ", layout="wide")
-st.title("🌐 AI投資ニュース・個別深層分析対応")
+st.title("🌐 AI投資ニュース・プロ分析（根拠連動版）")
 
 # --- サイドバー設定 ---
 api_key = st.sidebar.text_input("APIキーを入力してください", type="password")
@@ -30,11 +30,11 @@ st.sidebar.markdown("### 🔍 注目セクター（複数選択可）")
 SECTOR_OPTIONS = ["防衛", "宇宙", "重工", "海運", "物流", "エネルギー", "資源・素材", "半導体", "ハイテク・AI", "金融・銀行", "商社", "自動車", "不動産", "電力・インフラ", "化学・素材"]
 selected_sectors = st.sidebar.multiselect("セクターを選択", options=SECTOR_OPTIONS, default=[])
 
-# もとみさん指定の精鋭リスト
+# もとみさん指定のコア銘柄リスト（完全版）
 jp_stocks_curated = "ソニーg, ソニーfg, アストロスケール, QPSホールディングス, ACSL, 三菱重工, 川崎重工, IHI, 安川電機, 住友電工, 古河電気工業, フジクラ, 日本郵船, 商船三井, 川崎汽船, 日東電工, 東レ, シマノ, 三菱UFJ, みずほフィナンシャルグループ, 三井物産, 三菱商事, KDDI, 東北電力, 九州電力, 任天堂, カバー, トヨタ, ホンダ, 日立製作所, サンリオ, INPEX"
 us_stocks_curated = "Apple, NVIDIA, Alphabet, Amazon, Tesla, Microsoft, Meta, Palantir, Rocket Lab, Broadcom, Berkshire Hathaway"
 future_items = "日経225先物, NYダウ先物, ナスダック100先物, WTI原油先物, 金先物(Gold), 米国債10年"
-fx_pairs = "USD/JPY, EUR/JPY, GBP/JPY, AUD/JPY"
+fx_pairs = "USD/JPY, EUR/JPY, GBP/JPY, AUD/JPY, EUR/USD"
 
 st.sidebar.markdown("---")
 st.sidebar.markdown(f"### 📝 {market_choice} 監視コア銘柄")
@@ -46,7 +46,7 @@ else: current_default = jp_stocks_curated
 stock_input = st.sidebar.text_area("コア銘柄リスト", value=current_default, height=180)
 WATCHLIST = [s.strip() for s in stock_input.replace("、", ",").split(",") if s.strip()]
 
-# セッション状態の管理
+# セッション状態
 if "messages" not in st.session_state: st.session_state.messages = []
 if "analysis_text" not in st.session_state: st.session_state.analysis_text = None
 if "fetched_news" not in st.session_state: st.session_state.fetched_news = []
@@ -83,75 +83,72 @@ def get_all_news(hours):
         except: continue
     return news_list
 
-# 個別記事のAI要約・分析関数
-def analyze_single_article(title, summary, market, watchlist):
+def analyze_single_article(title, summary, watchlist):
     genai.configure(api_key=api_key)
     model = genai.GenerativeModel("gemini-3.1-flash-lite-preview")
-    prompt = f"""
-    以下のニュース記事を投資家の視点で要約・分析してください。
-    【タイトル】: {title}
-    【概要】: {summary}
-    
-    【出力指示】
-    1. 記事の内容を3行以内で要約してください。
-    2. 監視銘柄（{watchlist[:5]}...）や関連市場への「具体的な影響」と「ポジネガ」を客観的に述べてください。
-    3. 挨拶は不要。
-    """
+    prompt = f"以下の記事を投資家視点で3行要約し、関連銘柄への影響をポジネガで判定せよ。挨拶や『自己責任』等の免責文は一切不要。\n【記事】: {title}\n{summary}"
     try:
         response = model.generate_content(prompt)
         return response.text
-    except Exception as e:
-        return f"要約エラー: {e}"
+    except: return "エラー"
 
-# メイン分析実行
+# 分析実行
 if st.sidebar.button(f"{market_choice} 攻めの分析を開始"):
-    if not api_key:
-        st.error("APIキーを入れてください！")
+    if not api_key: st.error("APIキーを入れてください！")
     else:
         genai.configure(api_key=api_key)
         model = genai.GenerativeModel("gemini-3.1-flash-lite-preview")
-        with st.spinner("コア銘柄を軸に、市場全体からチャンスを探索中..."):
+        with st.spinner("ニュースの根拠を特定しつつ、徹底分析中..."):
             news_data = get_all_news(hours_range)
             st.session_state.fetched_news = news_data
-            st.session_state.individual_summaries = {} # リセット
+            st.session_state.individual_summaries = {}
             all_news_text = ""
             for i, n in enumerate(news_data):
-                all_news_text += f"No.{i} [{n['source']}]: {n['title']}\n{n['summary']}\n\n"
+                all_news_text += f"No.{i}: {n['title']}\n{n['summary']}\n\n"
             
-            prompt = f"あなたは凄腕の投資アナリストです。過去{hours_range}時間のニュースから、{market_choice}および{', '.join(selected_sectors)}に関連する情報を分析してください。監視銘柄（{', '.join(WATCHLIST)}）を最優先にしつつ、リスト外の注目銘柄も積極的に提案してください。具体的銘柄を見出しにし、事実・意味・ポジネガを記載。挨拶は不要。\n\n{all_news_text}"
+            prompt = f"""
+            あなたは凄腕の投資アナリストです。
             
+            【厳守事項】
+            1. 「投資は自己責任」「投資判断はご自身で」といった免責事項や挨拶は一切書くな。
+            2. 各分析項目には、必ず根拠となったニュース番号を「(No.Xより)」という形式で明記せよ。
+            
+            【ターゲット市場】: {market_choice}
+            【重点セクター】: {', '.join(selected_sectors) if selected_sectors else '全方位'}
+            【コア監視銘柄】: {', '.join(WATCHLIST)}
+            
+            指示:
+            - 過去{hours_range}時間のニュースから、コア銘柄および関連する注目銘柄を分析せよ。
+            - 具体的銘柄(証券コード)を見出しにし、「事実」「意味」「ポジネガ」を端的に記載せよ。
+            - 監視銘柄以外でも、材料のある銘柄は積極的に提案せよ。
+            
+            ニュースリスト:
+            {all_news_text}
+            """
             try:
                 chat = model.start_chat(history=[])
                 response = chat.send_message(prompt)
                 st.session_state.analysis_text = response.text
                 st.session_state.chat_session = chat
                 st.session_state.messages = []
-            except Exception as e:
-                st.error(f"分析エラー: {e}")
+            except Exception as e: st.error(f"分析エラー: {e}")
 
 # --- 表示部分 ---
 if st.session_state.analysis_text:
     col1, col2 = st.columns([1, 1])
     with col1:
-        st.subheader("📊 ニュースフィード")
+        st.subheader("📊 ニュースフィード（根拠番号）")
         for i, n in enumerate(st.session_state.fetched_news):
             with st.expander(f"No.{i}: 📌 [{n['time']}] {n['title']}"):
-                st.caption(f"ソース: {n['source']}")
                 st.write(n['summary'])
-                
-                # 【新規】個別要約ボタン
-                if st.button(f"✨ AIでこの記事を深掘り要約 (No.{i})", key=f"btn_{i}"):
+                if st.button(f"✨ AI深掘り要約 (No.{i})", key=f"btn_{i}"):
                     with st.spinner("AI要約中..."):
-                        summary_res = analyze_single_article(n['title'], n['summary'], market_choice, WATCHLIST)
-                        st.session_state.individual_summaries[i] = summary_res
-                
+                        st.session_state.individual_summaries[i] = analyze_single_article(n['title'], n['summary'], WATCHLIST)
                 if i in st.session_state.individual_summaries:
                     st.info(st.session_state.individual_summaries[i])
-                
-                st.link_button("記事全文（外部リンク）", n['link'])
-
+                st.link_button("記事全文", n['link'])
     with col2:
-        st.subheader(f"🤖 {market_choice} 精鋭分析 ＆ 銘柄提案")
+        st.subheader(f"🤖 {market_choice} 銘柄分析（1.3倍速）")
         with st.spinner("音声を生成中..."):
             try:
                 audio_bytes = asyncio.run(generate_voice(st.session_state.analysis_text))
@@ -159,10 +156,10 @@ if st.session_state.analysis_text:
             except: st.warning("音声生成に失敗しました。")
         st.write(st.session_state.analysis_text)
         st.markdown("---")
-        st.subheader("💬 深掘りチャット")
+        st.subheader("💬 チャットで深掘り")
         for m in st.session_state.messages:
             with st.chat_message(m["role"]): st.markdown(m["content"])
-        if q := st.chat_input("この分析についてさらに詳しく！"):
+        if q := st.chat_input("この根拠についてさらに詳しく！"):
             st.session_state.messages.append({"role": "user", "content": q})
             with st.chat_message("user"): st.markdown(q)
             with st.chat_message("assistant"):
