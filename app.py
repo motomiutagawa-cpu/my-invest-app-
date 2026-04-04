@@ -1,12 +1,13 @@
 import streamlit as st
 import feedparser
 import google.generativeai as genai
-from gtts import gTTS
+import asyncio
+import edge_tts
 import io
 
 # 画面設定
 st.set_page_config(page_title="AI投資アナリスト・プロ", layout="wide")
-st.title("🌐 AI投資ニュース・プロ分析（音声対応版）")
+st.title("🌐 AI投資ニュース・プロ分析（1.5倍速対応版）")
 
 # サイドバー設定
 api_key = st.sidebar.text_input("APIキーを入力してください", type="password")
@@ -23,8 +24,18 @@ if "messages" not in st.session_state: st.session_state.messages = []
 if "analysis_text" not in st.session_state: st.session_state.analysis_text = None
 if "fetched_news" not in st.session_state: st.session_state.fetched_news = []
 
+async def generate_voice(text):
+    """音声を1.5倍速で生成する関数"""
+    # ja-JP-NanamiNeuralは聞き取りやすい女性の声です。rate="+50%"で1.5倍速になります。
+    communicate = edge_tts.Communicate(text, "ja-JP-NanamiNeural", rate="+50%")
+    audio_data = b""
+    async for chunk in communicate.stream():
+        if chunk["type"] == "audio":
+            audio_data += chunk["data"]
+    return audio_data
+
 def get_all_news():
-    """Yahoo, ロイター, PR TIMESからニュースを統合して取得"""
+    """Yahoo, ロイター, PR TIMESからニュースを取得"""
     rss_urls = [
         "https://news.yahoo.co.jp/rss/topics/business.xml",
         "https://news.yahoo.co.jp/rss/topics/world.xml",
@@ -46,7 +57,7 @@ def get_all_news():
     return news_list
 
 # 分析実行ボタン
-if st.sidebar.button("AI分析＆音声生成"):
+if st.sidebar.button("AI分析＆1.5倍速読み上げ"):
     if not api_key:
         st.error("APIキーを入れてください！")
     else:
@@ -60,7 +71,7 @@ if st.sidebar.button("AI分析＆音声生成"):
             for i, n in enumerate(news_data):
                 all_news_text += f"No.{i} [{n['source']}]: {n['title']}\n{n['summary']}\n\n"
             
-            prompt = f"あなたはプロの投資アナリストです。以下のニュースから、監視銘柄（{', '.join(WATCHLIST)}）や地政学リスクに関連する重要情報を抽出し、銘柄別に事実・意味・株価へのポジネガを客観的に分析してください。挨拶は不要です。\n\n{all_news_text}"
+            prompt = f"あなたはプロの投資アナリストです。以下のニュースから監視銘柄に関連する地政学リスクや重要情報を抽出し、銘柄別に事実・意味・株価への影響を客観的に分析してください。\n\n{all_news_text}"
             
             try:
                 chat = model.start_chat(history=[])
@@ -69,7 +80,7 @@ if st.sidebar.button("AI分析＆音声生成"):
                 st.session_state.chat_session = chat
                 st.session_state.messages = []
             except Exception as e:
-                st.error(f"エラー: {e}")
+                st.error(f"分析エラー: {e}")
 
 # --- 表示部分 ---
 if st.session_state.analysis_text:
@@ -83,16 +94,15 @@ if st.session_state.analysis_text:
                 st.link_button("記事全文", n['link'])
 
     with col2:
-        st.subheader("🤖 AI分析結果")
+        st.subheader("🤖 AI分析結果 (1.5倍速読み上げ)")
         
-        # --- 音声読み上げ機能の追加 ---
-        try:
-            tts = gTTS(text=st.session_state.analysis_text, lang='ja')
-            audio_fp = io.BytesIO()
-            tts.write_to_fp(audio_fp)
-            st.audio(audio_fp, format='audio/mp3')
-        except Exception as e:
-            st.warning("音声の生成に失敗しました。")
+        # --- 音声生成（1.5倍速） ---
+        with st.spinner("音声を生成中..."):
+            try:
+                audio_bytes = asyncio.run(generate_voice(st.session_state.analysis_text))
+                st.audio(audio_bytes, format='audio/mp3')
+            except Exception as e:
+                st.warning("音声生成に失敗しました。")
 
         st.write(st.session_state.analysis_text)
         
@@ -101,7 +111,7 @@ if st.session_state.analysis_text:
         for m in st.session_state.messages:
             with st.chat_message(m["role"]): st.markdown(m["content"])
         
-        if q := st.chat_input("この材料についてもっと詳しく教えて？"):
+        if q := st.chat_input("この材料について詳しく！"):
             st.session_state.messages.append({"role": "user", "content": q})
             with st.chat_message("user"): st.markdown(q)
             with st.chat_message("assistant"):
