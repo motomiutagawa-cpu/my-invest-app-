@@ -33,7 +33,7 @@ MASTER_STOCKS = {
     "FX・為替": ["USD/JPY", "EUR/JPY", "GBP/JPY", "AUD/JPY", "EUR/USD"]
 }
 
-# --- セクターと銘柄の選択 ---
+# --- セクターと銘柄の選択ロジック ---
 st.sidebar.markdown("---")
 with st.sidebar.expander("🔍 注目セクターを選択"):
     SECTOR_OPTIONS = ["防衛", "宇宙", "重工", "海運", "物流", "エネルギー", "資源・素材", "半導体", "ハイテク・AI", "金融・銀行", "商社", "自動車", "不動産", "電力・インフラ", "化学・素材"]
@@ -74,7 +74,13 @@ async def generate_voice(text):
     return audio_data
 
 def get_all_news(hours):
-    rss_urls = ["https://news.yahoo.co.jp/rss/topics/business.xml", "https://news.yahoo.co.jp/rss/topics/world.xml", "https://jp.reuters.com/rss/businessNews", "https://jp.reuters.com/rss/worldNews", "https://prtimes.jp/index.rdf"]
+    rss_urls = [
+        "https://news.yahoo.co.jp/rss/topics/business.xml",
+        "https://news.yahoo.co.jp/rss/topics/world.xml",
+        "https://jp.reuters.com/rss/businessNews",
+        "https://jp.reuters.com/rss/worldNews",
+        "https://prtimes.jp/index.rdf"
+    ]
     news_list, seen_links = [], set()
     now = datetime.now(timezone.utc)
     time_threshold = now - timedelta(hours=hours)
@@ -87,7 +93,13 @@ def get_all_news(hours):
                     pub_time = datetime.fromtimestamp(time.mktime(pub_struct), timezone.utc)
                     if pub_time < time_threshold: continue
                 if entry.link in seen_links: continue
-                news_list.append({"title": entry.title, "summary": entry.get("summary", ""), "link": entry.link, "source": "Yahoo" if "yahoo" in url else "ロイター" if "reuters" in url else "PR TIMES", "time": pub_time.astimezone(timezone(timedelta(hours=9))).strftime('%m/%d %H:%M') if pub_struct else "--:--"})
+                news_list.append({
+                    "title": entry.title,
+                    "summary": entry.get("summary", ""),
+                    "link": entry.link,
+                    "source": "Yahoo" if "yahoo" in url else "ロイター" if "reuters" in url else "PR TIMES",
+                    "time": pub_time.astimezone(timezone(timedelta(hours=9))).strftime('%m/%d %H:%M') if pub_struct else "--:--"
+                })
                 seen_links.add(entry.link)
         except: continue
     return news_list
@@ -99,7 +111,8 @@ def analyze_single_article(title, summary):
     try:
         response = model.generate_content(prompt)
         return response.text
-    except: return "要約エラー"
+    except Exception as e:
+        return f"要約エラー: {e}"
 
 # --- メイン実行 ---
 if st.sidebar.button(f"{market_choice} 分析を開始"):
@@ -112,10 +125,72 @@ if st.sidebar.button(f"{market_choice} 分析を開始"):
             news_data = get_all_news(hours_range)
             st.session_state.fetched_news = news_data
             st.session_state.individual_summaries = {}
-            st.session_state.messages = [] # チャットリセット
+            st.session_state.messages = []
             all_news_text = ""
             for i, n in enumerate(news_data):
                 all_news_text += f"No.{i}: {n['title']}\n{n['summary']}\n\n"
             
-            prompt = f"凄腕投資アナリストとして分析せよ。挨拶、免責事項、自己責任等の定型文は一切書くな。各分析には必ず根拠番号「(No.Xより)」を明記せよ。\n【市場】: {market_choice}\n【セクター】: {', '.join(selected_sectors)}\n【監視銘柄】: {', '.join(WATCHLIST)}\n\n銘柄を見出しにし「事実」「意味」「ポジネガ」を端的に記載せよ。\nニュースリスト: {all_news_text}"
+            prompt = f"""
+            凄腕投資アナリストとして分析せよ。挨拶、免責事項、自己責任等の定型文は一切書くな。各分析には必ず根拠番号「(No.Xより)」を明記せよ。
+            【市場】: {market_choice}
+            【セクター】: {', '.join(selected_sectors)}
+            【監視銘柄】: {', '.join(WATCHLIST)}
+            
+            銘柄を見出しにし「事実」「意味」「ポジネガ」を端的に記載せよ。
+            ニュースリスト: {all_news_text}
+            """
             try:
+                chat = model.start_chat(history=[])
+                response = chat.send_message(prompt)
+                st.session_state.analysis_text = response.text
+                st.session_state.chat_session = chat
+            except Exception as e: st.error(f"分析エラー: {e}")
+
+# --- 表示エリア ---
+if st.session_state.analysis_text:
+    col1, col2 = st.columns([1, 1])
+    
+    with col1:
+        st.subheader("📊 ニュースフィード")
+        with st.container(height=800):
+            for i, n in enumerate(st.session_state.fetched_news):
+                with st.expander(f"No.{i}: 📌 [{n['time']}] {n['title']}"):
+                    st.write(n['summary'])
+                    # 個別要約ボタンのロジック
+                    if st.button(f"✨ AI要約 (No.{i})", key=f"btn_{i}"):
+                        with st.spinner("要約中..."):
+                            res = analyze_single_article(n['title'], n['summary'])
+                            st.session_state.individual_summaries[i] = res
+                    
+                    if i in st.session_state.individual_summaries:
+                        st.info(st.session_state.individual_summaries[i])
+                    st.link_button("全文へ", n['link'])
+                
+    with col2:
+        st.subheader("🤖 AI分析・深掘り")
+        with st.container(height=800):
+            with st.spinner("音声を生成中..."):
+                try:
+                    audio_bytes = asyncio.run(generate_voice(st.session_state.analysis_text))
+                    st.audio(audio_bytes, format='audio/mp3')
+                except: st.warning("音声生成エラー")
+            
+            st.write(st.session_state.analysis_text)
+            st.markdown("---")
+            
+            for m in st.session_state.messages:
+                with st.chat_message(m["role"]):
+                    st.markdown(m["content"])
+            
+            if q := st.chat_input("この結果についてさらに詳しく聞く..."):
+                st.session_state.messages.append({"role": "user", "content": q})
+                with st.chat_message("user"):
+                    st.markdown(q)
+                
+                with st.chat_message("assistant"):
+                    if st.session_state.chat_session:
+                        resp = st.session_state.chat_session.send_message(q)
+                        st.markdown(resp.text)
+                        st.session_state.messages.append({"role": "assistant", "content": resp.text})
+                    else:
+                        st.error("分析を先に開始してください。")
