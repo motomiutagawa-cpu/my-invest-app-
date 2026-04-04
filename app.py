@@ -44,7 +44,7 @@ if st.sidebar.button("ニュースを取得＆分析"):
         st.error("左側のメニューにAPIキーを入力してください。")
     else:
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel("gemini-3.1-pro-lite-preview") 
+        model = genai.GenerativeModel("gemini-3.1-flash-lite-preview") 
 
         with st.spinner("ニュースを収集中..."):
             news = get_news()
