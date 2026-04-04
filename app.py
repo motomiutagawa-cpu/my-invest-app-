@@ -11,7 +11,7 @@ import yfinance as yf
 # 画面設定
 st.set_page_config(page_title="AI投資アナリスト・プロ", layout="wide")
 
-st.title("🌐 AI投資ニュース・プロ分析（株価・FXレート完全版）")
+st.title("🌐 AI投資ニュース・プロ分析（インパクト予測版）")
 
 # --- サイドバー設定 ---
 api_key = st.sidebar.text_input("APIキーを入力", type="password")
@@ -67,17 +67,14 @@ def get_price_info(stock_str, market):
     price_data = ""
     for item in items:
         ticker_symbol = item
-        # FXの整形 (USD/JPY -> USDJPY=X)
         if "/" in item or market == "FX・為替":
             ticker_symbol = item.replace("/", "").replace(" ", "")
             if not ticker_symbol.endswith("=X"): ticker_symbol += "=X"
-        # 日本株の整形 (7011 -> 7011.T)
         elif market == "日本株" and item.isdigit() and len(item) == 4:
             ticker_symbol = f"{item}.T"
         
         try:
             tk = yf.Ticker(ticker_symbol)
-            # 週末などを考慮して5日分取得
             df = tk.history(period="5d")
             if not df.empty and len(df) >= 2:
                 cur_price = df['Close'].iloc[-1]
@@ -120,7 +117,7 @@ def get_all_news(hours):
 def analyze_single_article(title, summary):
     genai.configure(api_key=api_key)
     model = genai.GenerativeModel("gemini-3.1-flash-lite-preview")
-    prompt = f"3行要約しポジネガ判定せよ。免責文や挨拶は不要。\n【タイトル】: {title}\n{summary}"
+    prompt = f"この記事を投資家視点で要約し、以下の2点を明確にせよ。\n1. 【ポジティブ/ネガティブ/中立】の断言\n2. 【予想インパクト】: 何%程度の上昇・下落が見込めるか、過去の傾向から大胆に数値を提示せよ。\n挨拶や免責文は不要。\n【タイトル】: {title}\n{summary}"
     try:
         response = model.generate_content(prompt)
         return response.text
@@ -136,7 +133,6 @@ if st.sidebar.button(f"{market_choice} 分析を開始"):
             news_data = get_all_news(hours_range)
             st.session_state.fetched_news = news_data
             
-            # 株価・為替レートのリアルタイム取得
             target_list = narrow_stocks if narrow_stocks else CORE_WATCHLIST.get(market_choice)
             realtime_data = get_price_info(target_list, market_choice)
             
@@ -152,10 +148,10 @@ if st.sidebar.button(f"{market_choice} 分析を開始"):
             
             【指示】
             1. 指定銘柄「{narrow_stocks if narrow_stocks else '注目銘柄'}」の分析を最優先せよ。
-            2. 見出しは必ず【銘柄名(コード) | 価格 | 騰落率】とし、上記の価格データを1文字も漏らさず記載せよ。
-            3. 直接の材料がない場合でも、為替や金利、同業種（{', '.join(selected_sectors)}）のニュースから連想される「間接的影響」をプロの視点で考察せよ。
-            4. テクニカル的な視点（上昇トレンド、反発警戒など）も分析に含めよ。
-            5. 文末に必ず根拠番号「(No.Xより)」を明記せよ。
+            2. 見出しは必ず【銘柄名(コード) | 価格 | 騰落率】とせよ。
+            3. 分析の冒頭に、必ず【判定：ポジティブ / ネガティブ】と【予想インパクト：〇%〜〇%の上昇/下落】を明確に記載せよ。曖昧な表現は許さない。
+            4. 直接の材料がない場合でも、為替や金利、同業種（{', '.join(selected_sectors)}）のニュースから連想される影響を論理的に考察し、値動きのパーセンテージを予測せよ。
+            5. テクニカル的な視点を含め、文末に必ず根拠番号「(No.Xより)」を明記せよ。
             
             ニュースリスト:
             {all_news_text}
@@ -178,13 +174,14 @@ if st.session_state.analysis_text:
                 with st.expander(f"No.{i}: 📌 [{n['time']}] {n['title']}"):
                     st.write(n['summary'])
                     if st.button(f"✨ AI要約 (No.{i})", key=f"btn_{i}"):
-                        st.session_state.individual_summaries[i] = analyze_single_article(n['title'], n['summary'])
+                        with st.spinner("影響度を予測中..."):
+                            st.session_state.individual_summaries[i] = analyze_single_article(n['title'], n['summary'])
                     if i in st.session_state.individual_summaries:
                         st.info(st.session_state.individual_summaries[i])
                     st.link_button("全文へ", n['link'])
                 
     with col2:
-        st.subheader("🤖 深層分析（レート・騰落率連動）")
+        st.subheader("🤖 深層分析（インパクト予測連動）")
         with st.container(height=800):
             with st.spinner("音声を生成中..."):
                 try:
@@ -196,10 +193,8 @@ if st.session_state.analysis_text:
             st.markdown("---")
             for m in st.session_state.messages:
                 with st.chat_message(m["role"]): st.markdown(m["content"])
-            if q := st.chat_input("このレート変動の理由を詳しく..."):
+            if q := st.chat_input("このレート変動の理由やさらなる予測を詳しく..."):
                 st.session_state.messages.append({"role": "user", "content": q})
                 with st.chat_message("user"): st.markdown(q)
                 with st.chat_message("assistant"):
-                    resp = st.session_state.chat_session.send_message(q)
-                    st.markdown(resp.text)
-                    st.session_state.messages.append({"role": "assistant", "content": resp.text})
+                    resp = st.session_state.chat_session.send_message(q
