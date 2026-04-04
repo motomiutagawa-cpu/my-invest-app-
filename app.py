@@ -17,7 +17,7 @@ st.sidebar.markdown("### 📝 監視銘柄の編集")
 stock_input = st.sidebar.text_area("カンマ(,)区切りで自由に追加・削除できます", value=default_stocks, height=300)
 WATCHLIST = [stock.strip() for stock in stock_input.split(",") if stock.strip()]
 
-# --- アプリの記憶領域（チャットや分析結果を保持するため） ---
+# アプリの記憶領域
 if "news_items" not in st.session_state:
     st.session_state.news_items = None
 if "analysis_text" not in st.session_state:
@@ -28,21 +28,26 @@ if "messages" not in st.session_state:
     st.session_state.messages = []
 
 def get_news():
-    """RSSを利用してニュースを取得する関数"""
+    """RSSを利用してタイトルと中身の両方をスキャンする関数"""
     rss_urls = ["https://news.yahoo.co.jp/rss/topics/business.xml"]
     target_news = []
     for url in rss_urls:
         feed = feedparser.parse(url)
-        for entry in feed.entries[:30]: 
-            if any(stock in entry.title for stock in WATCHLIST):
-                target_news.append({"title": entry.title, "link": entry.link})
+        for entry in feed.entries[:50]: # 検索範囲を少し広げます
+            # タイトルまたは中身(summary)に銘柄名が含まれているかチェック
+            title_text = entry.get("title", "")
+            summary_text = entry.get("summary", "") # ニュースの概要
+            
+            if any(stock in title_text or stock in summary_text for stock in WATCHLIST):
+                target_news.append({"title": title_text, "link": entry.link, "summary": summary_text})
     return target_news
 
-# 「分析開始」ボタンが押された時の処理
+# 「分析開始」ボタン
 if st.sidebar.button("ニュースを取得＆分析"):
     if not api_key:
         st.error("左側のメニューにAPIキーを入力してください。")
     else:
+        # もとみさんの環境で唯一成功した魔法のモデル名
         genai.configure(api_key=api_key)
         model = genai.GenerativeModel("gemini-3.1-flash-lite-preview") 
 
@@ -54,67 +59,57 @@ if st.sidebar.button("ニュースを取得＆分析"):
             st.session_state.analysis_text = "※上記以外の銘柄については、本日特筆すべき個別材料はありません（全体相場・マクロ要因に連動して推移）"
             st.session_state.chat_session = None
         else:
-            news_text_for_ai = "\n".join([f"・{item['title']}" for item in news])
+            # AIに渡す情報を「タイトル＋中身」に強化
+            news_text_for_ai = ""
+            for item in news:
+                news_text_for_ai += f"【見出し】: {item['title']}\n【内容】: {item['summary']}\n\n"
             
-            # --- プロンプトに地政学リスクの条件を追加 ---
             prompt = f"""
-            以下のニュースの見出しリストから、投資判断に直結する分析を行ってください。
+            以下のニュースリストから、投資判断に直結する分析を行ってください。
             
             【ニュースリスト】
             {news_text_for_ai}
             
             【出力ルール】
             セクター単位でのまとめではなく、「個別銘柄名」を見出しにして一つずつ記載すること。
-            決算発表、業績修正、株式分割、自社株買い、業務提携、新技術の発表、アナリストのレーティング変更、配当落ちなど、その企業単独の材料を優先して抽出すること。
             各ニュースの事実を端的に記載し、最後にその材料が株価に与える影響（ポジティブかネガティブか）を1〜2行で客観的に添えること。
-            ★重要★：その材料が「地政学リスク」の観点から見て好材料か悪材料か（あるいは影響なしか）についても、必ず明確に言及すること。
-            投資判断に不要な前置きや挨拶は一切省き、すぐにニュースの一覧から出力すること。
+            ★最重要★：その材料が「地政学リスク」の観点から見て、日本の防衛、エネルギー、物流などにどう影響し、結果として好材料か悪材料か（あるいは影響なしか）を必ず明確に言及すること。
+            挨拶は省き、すぐにニュースの分析から出力すること。
             """
             
-            with st.spinner("AIがポジネガ判定＆地政学リスクを分析中..."):
+            with st.spinner("AIがタイトルと詳細を精査中..."):
                 try:
-                    # AIとのチャットセッションを開始（記憶を持たせる）
                     chat = model.start_chat(history=[])
                     response = chat.send_message(prompt, generation_config={"temperature": 0.0})
-                    
                     st.session_state.analysis_text = response.text
                     st.session_state.chat_session = chat
-                    st.session_state.messages = [] # 新しい分析のたびにチャット履歴をリセット
+                    st.session_state.messages = [] 
                 except Exception as e:
-                    st.error(f"エラーが発生しました: {e}")
+                    st.error(f"分析中にエラーが発生しました: {e}")
 
-# --- 分析結果とチャット画面の表示 ---
+# 分析結果とチャットの表示
 if st.session_state.news_items is not None:
     if not st.session_state.news_items:
         st.info(st.session_state.analysis_text)
     else:
         col1, col2 = st.columns([1, 1])
-        
         with col1:
             st.subheader("📰 関連ニュース一覧")
             for item in st.session_state.news_items:
                 st.markdown(f"- [{item['title']}]({item['link']})")
         
         with col2:
-            st.subheader("🤖 AI分析結果")
+            st.subheader("🤖 AI精緻分析 (地政学リスク対応)")
             st.write(st.session_state.analysis_text)
-            
             st.markdown("---")
-            st.subheader("💬 分析結果について深掘りする")
-            
-            # これまでのチャット履歴を表示
+            st.subheader("💬 この結果について質問する")
             for message in st.session_state.messages:
                 with st.chat_message(message["role"]):
                     st.markdown(message["content"])
-            
-            # チャットの入力フォーム
-            if user_question := st.chat_input("例：この記事の地政学リスクは中期的にどう影響する？"):
-                # ユーザーの質問を表示・保存
+            if user_question := st.chat_input("この材料が三菱重工に与える長期的な影響は？"):
                 st.session_state.messages.append({"role": "user", "content": user_question})
                 with st.chat_message("user"):
                     st.markdown(user_question)
-                
-                # AIの回答を生成・表示・保存
                 with st.chat_message("assistant"):
                     with st.spinner("考え中..."):
                         response = st.session_state.chat_session.send_message(user_question)
