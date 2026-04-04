@@ -11,7 +11,7 @@ import yfinance as yf
 # 画面設定
 st.set_page_config(page_title="AI投資アナリスト・プロ", layout="wide")
 
-st.title("🌐 AI投資ニュース・プロ分析（もとみさん専用 安定版）")
+st.title("🌐 AI投資ニュース・プロ分析（もとみさん専用 決定版）")
 
 # --- サイドバー設定 ---
 api_key = st.sidebar.text_input("APIキーを入力", type="password")
@@ -45,7 +45,7 @@ narrow_stocks = st.sidebar.text_area(
     placeholder="例: 7011, NVDA\nここに入力があれば、指定セクターも無視してこの銘柄のみを分析します。",
 )
 
-# もとみさんの精鋭マスターリスト（最重要＋注目銘柄）
+# もとみさんの精鋭マスターリスト
 CORE_WATCHLIST = {
     "日本株": "6758, 8729, 186A, 5595, 6767, 7011, 7012, 7013, 6506, 5802, 5801, 5803, 9101, 9104, 9107, 6988, 3402, 7309, 8306, 8411, 8031, 8058, 9433, 9506, 9508, 7974, 5253, 7203, 7267, 6501, 8136, 1605",
     "米国株": "AAPL, NVDA, GOOGL, AMZN, TSLA, MSFT, META, PLTR, RKLB, AVGO, BRK-B",
@@ -113,6 +113,8 @@ def get_all_news(hours):
 # --- 個別要約（対象と数値を明記） ---
 def analyze_single_article(title, summary):
     genai.configure(api_key=api_key)
+    # 動いていたモデルに固定
+    model = genai.GenerativeModel("gemini-3.1-flash-lite-preview")
     prompt = f"""
     この記事を投資家視点で端的に要約し、影響を予測してください。挨拶や免責文は一切不要。
     【出力フォーマット】
@@ -123,14 +125,10 @@ def analyze_single_article(title, summary):
     【タイトル】: {title}\n【本文】: {summary}
     """
     try:
-        model = genai.GenerativeModel("gemini-1.5-flash-latest")
-        return model.generate_content(prompt).text
-    except:
-        try:
-            model = genai.GenerativeModel("gemini-pro")
-            return model.generate_content(prompt).text
-        except Exception as e:
-            return f"エラー: {e}"
+        response = model.generate_content(prompt)
+        return response.text
+    except Exception as e:
+        return f"エラー: {e}"
 
 # --- 分析実行 ---
 if st.sidebar.button(f"{market_choice} 分析を開始"):
@@ -140,6 +138,9 @@ if st.sidebar.button(f"{market_choice} 分析を開始"):
         st.session_state.chat_session = None
         st.session_state.messages = []
         genai.configure(api_key=api_key)
+        
+        # 動いていたモデルに固定
+        model = genai.GenerativeModel("gemini-3.1-flash-lite-preview")
         
         with st.spinner("情報を戦略的に精査中..."):
             try:
@@ -159,18 +160,21 @@ if st.sidebar.button(f"{market_choice} 分析を開始"):
                 elif selected_sectors:
                     policy = f"【厳守：セクター限定モード】選択されたセクター『{', '.join(selected_sectors)}』に関する情報のみを出力せよ。無関係な情報は一切不要。"
                 else:
-                    policy = f"【通常モード】私の最重要銘柄および注目銘柄（{target_list}）を中心に、株価材料が出た他銘柄も漏らさず分析せよ。セクター（{', '.join(selected_sectors)}）の動向も重視せよ。"
+                    policy = f"【通常モード】最重要・注目銘柄（{target_list}）を中心に、材料が出た他銘柄も漏らさず分析せよ。セクター（{', '.join(selected_sectors)}）の動向も重視せよ。"
 
                 prompt = f"""
-                あなたは凄腕の投資アナリストです。
+                あなたは凄腕の投資アナリストです。以下の【絶対遵守ルール】に従い分析せよ。
+                
                 【絶対遵守ルール】
-                1. 挨拶、投資判断に対する前置きや免責事項（投資は自己責任等）は一切書くな。すぐに一覧から出力せよ。
+                1. 挨拶、前置き、投資判断への免責事項（投資は自己責任等）は一切書くな。すぐに一覧から出力せよ。
                 2. {policy}
-                3. ショート（空売り）の提案は一切行わないこと。上場廃止銘柄は扱わないこと。
-                4. 見出しは必ず **【銘柄名(コード) | 現在価格 | 騰落率】** とし、価格データを正確に記載せよ。全体相場やセクターの場合は **【セクター：〇〇】** とせよ。
-                5. 各銘柄・セクターの分析冒頭に必ず **【判定：ポジティブ/ネガティブ/中立】** と **【予想インパクト：+〇%上昇予測 / -〇%下落予測】** を断言せよ。
-                6. 各ニュースの事実を端的に記載し、間接的影響・テクニカル予測を含め、文末に必ず根拠番号「(No.Xより)」を添えよ。
-                7. 回答の最後に必ず「※上記以外の銘柄については、本日特筆すべき個別材料はありません（全体相場・マクロ要因に連動して推移）」とまとめること。
+                3. 監視銘柄は保有している前提で分析せよ。「売り材料（悪材料・ネガティブ要因）」が出た場合は絶対に隠さず明確に提示せよ。ただし、ショート（空売り）の提案は行わないこと。
+                4. 上場廃止銘柄は扱わないこと。
+                5. 見出しは必ず **【銘柄名(コード) | 現在価格 | 騰落率】** とし、価格データを正確に記載せよ。個別銘柄ではなくセクター全体の場合は **【セクター：〇〇】** とせよ。
+                6. 各分析の冒頭に必ず **【判定：ポジティブ/ネガティブ/中立】** と **【予想インパクト：+〇%上昇予測 / -〇%下落予測】** を断言せよ。
+                7. 各ニュースの事実を端的に記載し、間接的影響・テクニカル予測を含め、文末に必ず根拠番号「(No.Xより)」を添えよ。
+                8. 回答の最後に必ず以下の1文をそのまま出力して締めくくること。
+                   「※上記以外の銘柄については、本日特筆すべき個別材料はありません（全体相場・マクロ要因に連動して推移）」
 
                 【現在の株価・騰落率】
                 {realtime_prices}
@@ -179,15 +183,8 @@ if st.sidebar.button(f"{market_choice} 分析を開始"):
                 {all_news_text}
                 """
                 
-                # 自動フォールバック（エラー回避）機能
-                try:
-                    model = genai.GenerativeModel("gemini-1.5-flash-latest")
-                    chat = model.start_chat(history=[])
-                    response = chat.send_message(prompt)
-                except:
-                    model = genai.GenerativeModel("gemini-pro")
-                    chat = model.start_chat(history=[])
-                    response = chat.send_message(prompt)
+                chat = model.start_chat(history=[])
+                response = chat.send_message(prompt)
                 
                 if response.text:
                     st.session_state.analysis_text = response.text
@@ -241,5 +238,3 @@ if st.session_state.analysis_text:
                             st.error(f"チャットエラー: {e}")
                     else: 
                         st.error("分析を開始してください。")
-
-# --- 処理ここまで ---
