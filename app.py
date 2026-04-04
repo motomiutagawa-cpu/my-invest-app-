@@ -61,6 +61,8 @@ WATCHLIST = selected_stocks + ([custom_stocks] if custom_stocks else [])
 if "analysis_text" not in st.session_state: st.session_state.analysis_text = None
 if "fetched_news" not in st.session_state: st.session_state.fetched_news = []
 if "individual_summaries" not in st.session_state: st.session_state.individual_summaries = {}
+if "messages" not in st.session_state: st.session_state.messages = []
+if "chat_session" not in st.session_state: st.session_state.chat_session = None
 
 # --- 関数群 ---
 async def generate_voice(text):
@@ -110,40 +112,10 @@ if st.sidebar.button(f"{market_choice} 分析を開始"):
             news_data = get_all_news(hours_range)
             st.session_state.fetched_news = news_data
             st.session_state.individual_summaries = {}
+            st.session_state.messages = [] # チャットリセット
             all_news_text = ""
             for i, n in enumerate(news_data):
                 all_news_text += f"No.{i}: {n['title']}\n{n['summary']}\n\n"
             
             prompt = f"凄腕投資アナリストとして分析せよ。挨拶、免責事項、自己責任等の定型文は一切書くな。各分析には必ず根拠番号「(No.Xより)」を明記せよ。\n【市場】: {market_choice}\n【セクター】: {', '.join(selected_sectors)}\n【監視銘柄】: {', '.join(WATCHLIST)}\n\n銘柄を見出しにし「事実」「意味」「ポジネガ」を端的に記載せよ。\nニュースリスト: {all_news_text}"
             try:
-                response = model.generate_content(prompt)
-                st.session_state.analysis_text = response.text
-            except Exception as e: st.error(f"エラー: {e}")
-
-# --- 【重要】独立スクロール表示エリア ---
-if st.session_state.analysis_text:
-    col1, col2 = st.columns([1, 1])
-    
-    with col1:
-        st.subheader("📊 ニュースフィード")
-        # 枠の高さを800ピクセルに固定して独立スクロールさせる
-        with st.container(height=800):
-            for i, n in enumerate(st.session_state.fetched_news):
-                with st.expander(f"No.{i}: 📌 [{n['time']}] {n['title']}"):
-                    st.write(n['summary'])
-                    if st.button(f"✨ AI要約 (No.{i})", key=f"btn_{i}"):
-                        st.session_state.individual_summaries[i] = analyze_single_article(n['title'], n['summary'])
-                    if i in st.session_state.individual_summaries:
-                        st.info(st.session_state.individual_summaries[i])
-                    st.link_button("全文へ", n['link'])
-                
-    with col2:
-        st.subheader("🤖 AI分析結果")
-        # こちらも独立してスクロール
-        with st.container(height=800):
-            with st.spinner("音声を生成中..."):
-                try:
-                    audio_bytes = asyncio.run(generate_voice(st.session_state.analysis_text))
-                    st.audio(audio_bytes, format='audio/mp3')
-                except: st.warning("音声生成エラー")
-            st.write(st.session_state.analysis_text)
