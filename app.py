@@ -10,20 +10,6 @@ import time
 # 画面設定
 st.set_page_config(page_title="AI投資アナリスト・プロ", layout="wide")
 
-# --- CSS: 左右独立スクロール ＆ スマホ最適化 ---
-st.markdown("""
-    <style>
-    div[data-testid="column"] {
-        height: 85vh;
-        overflow-y: auto;
-        padding-right: 10px;
-    }
-    div[data-testid="column"]::-webkit-scrollbar { width: 6px; }
-    div[data-testid="column"]::-webkit-scrollbar-thumb { background-color: #888; border-radius: 10px; }
-    .stCheckbox { margin-bottom: -15px; }
-    </style>
-    """, unsafe_allow_html=True)
-
 st.title("🌐 AI投資ニュース・プロ分析")
 
 # --- サイドバー設定 ---
@@ -47,7 +33,7 @@ MASTER_STOCKS = {
     "FX・為替": ["USD/JPY", "EUR/JPY", "GBP/JPY", "AUD/JPY", "EUR/USD"]
 }
 
-# --- セクターと銘柄の選択ロジック ---
+# --- セクターと銘柄の選択 ---
 st.sidebar.markdown("---")
 with st.sidebar.expander("🔍 注目セクターを選択"):
     SECTOR_OPTIONS = ["防衛", "宇宙", "重工", "海運", "物流", "エネルギー", "資源・素材", "半導体", "ハイテク・AI", "金融・銀行", "商社", "自動車", "不動産", "電力・インフラ", "化学・素材"]
@@ -66,13 +52,12 @@ with st.sidebar.expander(f"📝 {market_choice} 監視銘柄を選択", expanded
         for s in current_master: st.session_state[f"stk_{s}"] = True
     if col_m2.button("全解除", key="stk_none"):
         for s in current_master: st.session_state[f"stk_{s}"] = False
-    
     selected_stocks = [s for s in current_master if st.checkbox(s, key=f"stk_{s}", value=st.session_state.get(f"stk_{s}", True))]
 
 custom_stocks = st.sidebar.text_input("その他追加銘柄（任意）")
 WATCHLIST = selected_stocks + ([custom_stocks] if custom_stocks else [])
 
-# セッション状態の初期化
+# セッション状態
 if "analysis_text" not in st.session_state: st.session_state.analysis_text = None
 if "fetched_news" not in st.session_state: st.session_state.fetched_news = []
 if "individual_summaries" not in st.session_state: st.session_state.individual_summaries = {}
@@ -108,22 +93,20 @@ def get_all_news(hours):
 def analyze_single_article(title, summary):
     genai.configure(api_key=api_key)
     model = genai.GenerativeModel("gemini-3.1-flash-lite-preview")
-    prompt = f"以下の記事を投資家視点で3行要約し、影響をポジネガ判定せよ。免責文や挨拶は不要。\n【タイトル】: {title}\n【本文】: {summary}"
+    prompt = f"投資家視点で3行要約し影響をポジネガ判定せよ。免責文や挨拶は不要。\n【タイトル】: {title}\n【本文】: {summary}"
     try:
         response = model.generate_content(prompt)
         return response.text
-    except: return "エラーが発生しました。"
+    except: return "要約エラー"
 
-# --- メイン実行ボタン ---
+# --- メイン実行 ---
 if st.sidebar.button(f"{market_choice} 分析を開始"):
-    if not api_key:
-        st.error("APIキーを入力してください。")
-    elif not WATCHLIST:
-        st.warning("分析対象の銘柄を1つ以上選択してください。")
+    if not api_key: st.error("APIキーを入れてください。")
+    elif not WATCHLIST: st.warning("銘柄を選択してください。")
     else:
         genai.configure(api_key=api_key)
         model = genai.GenerativeModel("gemini-3.1-flash-lite-preview")
-        with st.spinner("情報を精査中..."):
+        with st.spinner("スキャン中..."):
             news_data = get_all_news(hours_range)
             st.session_state.fetched_news = news_data
             st.session_state.individual_summaries = {}
@@ -131,42 +114,36 @@ if st.sidebar.button(f"{market_choice} 分析を開始"):
             for i, n in enumerate(news_data):
                 all_news_text += f"No.{i}: {n['title']}\n{n['summary']}\n\n"
             
-            prompt = f"""
-            凄腕投資アナリストとして分析せよ。挨拶、免責事項、自己責任等の定型文は一切書くな。各分析には必ず根拠番号「(No.Xより)」を明記せよ。
-            【市場】: {market_choice}
-            【セクター】: {', '.join(selected_sectors) if selected_sectors else '全方位'}
-            【監視銘柄】: {', '.join(WATCHLIST)}
-            
-            具体的銘柄を見出しにし、「事実」「意味」「ポジネガ」を端的に記載。リスト外でも重要材料があれば積極的に提案せよ。
-            ニュースリスト: {all_news_text}
-            """
+            prompt = f"凄腕投資アナリストとして分析せよ。挨拶、免責事項、自己責任等の定型文は一切書くな。各分析には必ず根拠番号「(No.Xより)」を明記せよ。\n【市場】: {market_choice}\n【セクター】: {', '.join(selected_sectors)}\n【監視銘柄】: {', '.join(WATCHLIST)}\n\n銘柄を見出しにし「事実」「意味」「ポジネガ」を端的に記載せよ。\nニュースリスト: {all_news_text}"
             try:
                 response = model.generate_content(prompt)
                 st.session_state.analysis_text = response.text
-            except Exception as e:
-                st.error(f"分析中にエラーが発生しました: {e}")
+            except Exception as e: st.error(f"エラー: {e}")
 
-# --- 表示エリア ---
+# --- 【重要】独立スクロール表示エリア ---
 if st.session_state.analysis_text:
     col1, col2 = st.columns([1, 1])
     
     with col1:
         st.subheader("📊 ニュースフィード")
-        for i, n in enumerate(st.session_state.fetched_news):
-            with st.expander(f"No.{i}: 📌 [{n['time']}] {n['title']}"):
-                st.write(n['summary'])
-                if st.button(f"✨ AI要約 (No.{i})", key=f"btn_{i}"):
-                    with st.spinner("要約中..."):
+        # 枠の高さを800ピクセルに固定して独立スクロールさせる
+        with st.container(height=800):
+            for i, n in enumerate(st.session_state.fetched_news):
+                with st.expander(f"No.{i}: 📌 [{n['time']}] {n['title']}"):
+                    st.write(n['summary'])
+                    if st.button(f"✨ AI要約 (No.{i})", key=f"btn_{i}"):
                         st.session_state.individual_summaries[i] = analyze_single_article(n['title'], n['summary'])
-                if i in st.session_state.individual_summaries:
-                    st.info(st.session_state.individual_summaries[i])
-                st.link_button("全文へ", n['link'])
+                    if i in st.session_state.individual_summaries:
+                        st.info(st.session_state.individual_summaries[i])
+                    st.link_button("全文へ", n['link'])
                 
     with col2:
         st.subheader("🤖 AI分析結果")
-        with st.spinner("音声を生成中..."):
-            try:
-                audio_bytes = asyncio.run(generate_voice(st.session_state.analysis_text))
-                st.audio(audio_bytes, format='audio/mp3')
-            except: st.warning("音声生成エラー")
-        st.write(st.session_state.analysis_text)
+        # こちらも独立してスクロール
+        with st.container(height=800):
+            with st.spinner("音声を生成中..."):
+                try:
+                    audio_bytes = asyncio.run(generate_voice(st.session_state.analysis_text))
+                    st.audio(audio_bytes, format='audio/mp3')
+                except: st.warning("音声生成エラー")
+            st.write(st.session_state.analysis_text)
