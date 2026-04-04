@@ -11,7 +11,7 @@ import yfinance as yf
 # 画面設定
 st.set_page_config(page_title="AI投資アナリスト・プロ", layout="wide")
 
-st.title("🌐 AI投資ニュース・プロ分析（予測数値 徹底強化版）")
+st.title("🌐 AI投資ニュース・プロ分析（要約＋予測統合版）")
 
 # --- サイドバー設定 ---
 api_key = st.sidebar.text_input("APIキーを入力", type="password")
@@ -112,14 +112,29 @@ def get_all_news(hours):
         except: continue
     return news_list
 
+# --- 【修正】個別記事の要約＋予測 ---
 def analyze_single_article(title, summary):
     genai.configure(api_key=api_key)
     model = genai.GenerativeModel("gemini-3.1-flash-lite-preview")
-    prompt = f"ポジネガと予想インパクト%を断言せよ。挨拶不要。\n【タイトル】: {title}\n{summary}"
+    prompt = f"""
+    この記事を投資家視点で端的に要約し、影響を予測してください。挨拶や免責文は不要。
+
+    【出力フォーマット】
+    ■ ニュース要約
+    （※ここに3行程度で事実をわかりやすく要約）
+
+    ■ 投資判断
+    【判定】ポジティブ / ネガティブ / 中立
+    【予想インパクト】+〇%上昇予測 / -〇%下落予測（※過去の傾向から大胆に数値を提示）
+
+    【タイトル】: {title}
+    【本文】: {summary}
+    """
     try:
         response = model.generate_content(prompt)
         return response.text
-    except: return "エラー"
+    except Exception as e:
+        return f"要約エラー: {e}"
 
 # --- 分析実行 ---
 if st.sidebar.button(f"{market_choice} 分析を開始"):
@@ -173,7 +188,8 @@ if st.session_state.analysis_text:
                 with st.expander(f"No.{i}: 📌 [{n['time']}] {n['title']}"):
                     st.write(n['summary'])
                     if st.button(f"✨ AI要約 (No.{i})", key=f"btn_{i}"):
-                        st.session_state.individual_summaries[i] = analyze_single_article(n['title'], n['summary'])
+                        with st.spinner("要約と影響度を予測中..."):
+                            st.session_state.individual_summaries[i] = analyze_single_article(n['title'], n['summary'])
                     if i in st.session_state.individual_summaries:
                         st.info(st.session_state.individual_summaries[i])
                     st.link_button("全文へ", n['link'])
@@ -192,6 +208,7 @@ if st.session_state.analysis_text:
             for m in st.session_state.messages:
                 with st.chat_message(m["role"]): st.markdown(m["content"])
             
+            # ここの下の行まで確実にコピーしてください
             if q := st.chat_input("この予測をさらに深掘り..."):
                 st.session_state.messages.append({"role": "user", "content": q})
                 with st.chat_message("user"): st.markdown(q)
@@ -201,3 +218,4 @@ if st.session_state.analysis_text:
                         st.markdown(resp.text)
                         st.session_state.messages.append({"role": "assistant", "content": resp.text})
                     else: st.error("分析を開始してください。")
+
