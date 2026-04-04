@@ -11,7 +11,7 @@ import yfinance as yf
 # 画面設定
 st.set_page_config(page_title="AI投資アナリスト・プロ", layout="wide")
 
-st.title("🌐 AI投資ニュース・プロ分析（ハイブリッド構成版）")
+st.title("🌐 AI投資ニュース・プロ分析（予測数値 徹底強化版）")
 
 # --- サイドバー設定 ---
 api_key = st.sidebar.text_input("APIキーを入力", type="password")
@@ -42,7 +42,7 @@ st.sidebar.markdown("---")
 st.sidebar.markdown("### 🎯 特定銘柄を深掘り")
 narrow_stocks = st.sidebar.text_area(
     "銘柄名・コードを入力",
-    placeholder="例: 7011, NVDA\n空欄なら重要銘柄を自動選別",
+    placeholder="例: 7011, NVDA\n空欄なら注目銘柄を自動選別",
 )
 
 # 精鋭マスターリスト
@@ -60,7 +60,7 @@ if "individual_summaries" not in st.session_state: st.session_state.individual_s
 if "messages" not in st.session_state: st.session_state.messages = []
 if "chat_session" not in st.session_state: st.session_state.chat_session = None
 
-# --- 株価取得 ---
+# --- 株価取得関数 ---
 def get_price_info(stock_str, market):
     items = [s.strip() for s in stock_str.replace("、", ",").split(",") if s.strip()]
     price_data = ""
@@ -80,6 +80,8 @@ def get_price_info(stock_str, market):
                 prev_price = df['Close'].iloc[-2]
                 change = ((cur_price - prev_price) / prev_price) * 100
                 price_data += f"・{item}: {cur_price:,.1f} ({change:+.2f}%)\n"
+            else:
+                price_data += f"・{item}: データ取得不可\n"
         except: continue
     return price_data
 
@@ -113,7 +115,7 @@ def get_all_news(hours):
 def analyze_single_article(title, summary):
     genai.configure(api_key=api_key)
     model = genai.GenerativeModel("gemini-3.1-flash-lite-preview")
-    prompt = f"ポジネガ断言とインパクト%を予測せよ。挨拶不要。\n【タイトル】: {title}\n{summary}"
+    prompt = f"ポジネガと予想インパクト%を断言せよ。挨拶不要。\n【タイトル】: {title}\n{summary}"
     try:
         response = model.generate_content(prompt)
         return response.text
@@ -125,14 +127,14 @@ if st.sidebar.button(f"{market_choice} 分析を開始"):
     else:
         genai.configure(api_key=api_key)
         model = genai.GenerativeModel("gemini-3.1-flash-lite-preview")
-        with st.spinner("情報を戦略的に精査中..."):
+        with st.spinner("最新データを統合中..."):
             news_data = get_all_news(hours_range)
             st.session_state.fetched_news = news_data
             st.session_state.individual_summaries = {}
             st.session_state.messages = []
             
             target_list = narrow_stocks if narrow_stocks else CORE_WATCHLIST.get(market_choice)
-            realtime_data = get_price_info(target_list, market_choice)
+            realtime_prices = get_price_info(target_list, market_choice)
             
             all_news_text = ""
             for i, n in enumerate(news_data):
@@ -141,14 +143,15 @@ if st.sidebar.button(f"{market_choice} 分析を開始"):
             prompt = f"""
             プロの投資アナリストとして分析せよ。挨拶・免責文は一切禁止。
             
-            【リアルタイム価格】
-            {realtime_data}
+            【現在の株価・騰落率データ】
+            {realtime_prices}
             
-            【出力ルール】
-            1. **個別銘柄分析**: 監視銘柄（{target_list}）および「精鋭リスト外」でも個別ニュースで動きが大きそうな銘柄は、個別に見出しを立てて詳しく分析せよ。
-            2. **セクターまとめ**: セクター全体に波及するニュース（金利、政策、為替等）は、銘柄を列挙せず「【セクター：〇〇】」としてまとめ、全体へのポジネガと予測値を書け。
-            3. 分析冒頭に必ず【判定：ポジティブ / ネガティブ】と【予想インパクト：〇%の上昇/下落】を明記せよ。
-            4. テクニカル的な予測（トレンド等）も含め、文末に必ず根拠番号「(No.Xより)」を添えよ。
+            【絶対遵守の出力ルール】
+            1. 見出しは必ず **【銘柄名(コード) | 現在価格 | 騰落率】** とし、上記のデータを正確に記載せよ。
+            2. 各分析の冒頭に必ず **【判定：ポジティブ/ネガティブ】** と **【予想インパクト：+〇%上昇予測 / -〇%下落予測】** を明記せよ。
+            3. **個別銘柄**: 指定銘柄およびリスト外でも材料が強いものは個別で深掘りせよ。
+            4. **セクター**: 全体に波及するニュースはセクター（{', '.join(selected_sectors)}）でまとめ、波及銘柄と予測値を書け。
+            5. 直接の材料がない場合でも、マクロ環境からの「連想・間接影響」と「テクニカル予測」を必ず含め、文末に「(No.Xより)」を添えよ。
             
             ニュースリスト:
             {all_news_text}
@@ -176,7 +179,7 @@ if st.session_state.analysis_text:
                     st.link_button("全文へ", n['link'])
                 
     with col2:
-        st.subheader("🤖 戦略分析（個別 vs セクター）")
+        st.subheader("🤖 AI戦略分析（価格・予測値連動）")
         with st.container(height=800):
             with st.spinner("音声を生成中..."):
                 try:
@@ -189,7 +192,7 @@ if st.session_state.analysis_text:
             for m in st.session_state.messages:
                 with st.chat_message(m["role"]): st.markdown(m["content"])
             
-            if q := st.chat_input("この予測を深掘り..."):
+            if q := st.chat_input("この予測をさらに深掘り..."):
                 st.session_state.messages.append({"role": "user", "content": q})
                 with st.chat_message("user"): st.markdown(q)
                 with st.chat_message("assistant"):
