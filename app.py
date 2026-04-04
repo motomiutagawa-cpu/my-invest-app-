@@ -110,14 +110,27 @@ def get_all_news(hours):
         except: continue
     return news_list
 
+# --- 【修正点】個別要約で「対象」を明確にする ---
 def analyze_single_article(title, summary):
     genai.configure(api_key=api_key)
     model = genai.GenerativeModel("gemini-3.1-flash-lite-preview")
-    prompt = f"要約(3行程度)、判定、予想インパクト%を断言せよ。挨拶不要。\n【タイトル】: {title}\n{summary}"
+    prompt = f"""
+    この記事を投資家視点で端的に要約し、影響を予測してください。挨拶や免責文は一切不要。
+
+    【出力フォーマット】
+    【要約】（※3行程度で事実をわかりやすく要約）
+    【対象】（※このニュースの影響を最も受ける「具体的な銘柄名」「セクター名」または「全体相場」を明記）
+    【判定】ポジティブ / ネガティブ / 中立
+    【予想インパクト】（※上記の対象に対して）+〇%上昇予測 / -〇%下落予測 など、大胆に数値を提示
+    
+    【タイトル】: {title}
+    【本文】: {summary}
+    """
     try:
         response = model.generate_content(prompt)
         return response.text
-    except: return "エラー"
+    except Exception as e:
+        return f"エラー: {e}"
 
 # --- 分析実行 ---
 if st.sidebar.button(f"{market_choice} 分析を開始"):
@@ -139,7 +152,6 @@ if st.sidebar.button(f"{market_choice} 分析を開始"):
             for i, n in enumerate(news_data):
                 all_news_text += f"No.{i}: {n['title']}\n{n['summary']}\n\n"
             
-            # 【重要】プロンプトの厳格化ロジック
             if narrow_stocks:
                 policy = f"【厳守：銘柄指定モード】あなたは指定された『{narrow_stocks}』に関する情報のみを分析するボットです。これ以外の銘柄や、これに無関係なセクター情報は一切出力しないでください。"
             elif selected_sectors:
@@ -187,24 +199,3 @@ if st.session_state.analysis_text:
                 
     with col2:
         st.subheader("🤖 AI戦略分析（絞り込み優先）")
-        with st.container(height=800):
-            with st.spinner("音声を生成中..."):
-                try:
-                    audio_bytes = asyncio.run(generate_voice(st.session_state.analysis_text))
-                    st.audio(audio_bytes, format='audio/mp3')
-                except: st.warning("音声生成エラー")
-            
-            st.write(st.session_state.analysis_text)
-            st.markdown("---")
-            for m in st.session_state.messages:
-                with st.chat_message(m["role"]): st.markdown(m["content"])
-            
-            if q := st.chat_input("さらに深掘り..."):
-                st.session_state.messages.append({"role": "user", "content": q})
-                with st.chat_message("user"): st.markdown(q)
-                with st.chat_message("assistant"):
-                    if st.session_state.chat_session:
-                        resp = st.session_state.chat_session.send_message(q)
-                        st.markdown(resp.text)
-                        st.session_state.messages.append({"role": "assistant", "content": resp.text})
-                    else: st.error("分析を開始してください。")
