@@ -9,9 +9,9 @@ import time
 import yfinance as yf
 
 # 画面設定
-st.set_page_config(page_title="AI投資アナリスト・もとみさん専用", layout="wide")
+st.set_page_config(page_title="AI投資アナリスト・プロ", layout="wide")
 
-st.title("🌐 AI投資ニュース・プロ分析（もとみさん専用 最終版）")
+st.title("🌐 AI投資ニュース・プロ分析（機能集大成版）")
 
 # --- サイドバー設定 ---
 api_key = st.sidebar.text_input("APIキーを入力", type="password")
@@ -69,7 +69,7 @@ def get_price_info(stock_str, market):
         if "/" in item or market == "FX・為替":
             ticker_symbol = item.replace("/", "").replace(" ", "")
             if not ticker_symbol.endswith("=X"): ticker_symbol += "=X"
-        elif market == "日本株" and len(item) == 4:
+        elif market == "日本株" and len(item) == 4 and item.isdigit():
             ticker_symbol = f"{item}.T"
         
         try:
@@ -110,10 +110,9 @@ def get_all_news(hours):
         except: continue
     return news_list
 
-# --- 個別要約（対象と数値を明記） ---
+# --- 個別要約（4項目フォーマット） ---
 def analyze_single_article(title, summary):
     genai.configure(api_key=api_key)
-    # ご指定のモデルに固定
     model = genai.GenerativeModel("gemini-3.1-flash-lite-preview")
     prompt = f"""
     この記事を投資家視点で端的に要約し、影響を予測してください。挨拶や免責文は一切不要。
@@ -127,8 +126,12 @@ def analyze_single_article(title, summary):
     try:
         response = model.generate_content(prompt)
         return response.text
-    except Exception as e:
-        return f"エラー: {e}"
+    except:
+        try:
+            model = genai.GenerativeModel("gemini-pro")
+            return model.generate_content(prompt).text
+        except Exception as e:
+            return f"エラー: {e}"
 
 # --- 分析実行 ---
 if st.sidebar.button(f"{market_choice} 分析を開始"):
@@ -138,9 +141,6 @@ if st.sidebar.button(f"{market_choice} 分析を開始"):
         st.session_state.chat_session = None
         st.session_state.messages = []
         genai.configure(api_key=api_key)
-        
-        # ご指定のモデルに固定
-        model = genai.GenerativeModel("gemini-3.1-flash-lite-preview")
         
         with st.spinner("情報を戦略的に精査中..."):
             try:
@@ -155,27 +155,25 @@ if st.sidebar.button(f"{market_choice} 分析を開始"):
                 for i, n in enumerate(news_data):
                     all_news_text += f"No.{i}: {n['title']}\n{n['summary']}\n\n"
                 
+                # 【厳格な絞り込みロジック】
                 if narrow_stocks:
-                    policy = f"【厳守：銘柄指定モード】指定された『{narrow_stocks}』に関する情報のみを分析せよ。無関係な銘柄やセクター情報は一切出力するな。"
+                    policy = f"【厳守：銘柄指定モード】あなたは指定された『{narrow_stocks}』に関する情報のみを分析する。これ以外の銘柄や、これに無関係なセクター情報は一切出力するな。"
                 elif selected_sectors:
-                    policy = f"【厳守：セクター限定モード】選択されたセクター『{', '.join(selected_sectors)}』に関する情報のみを出力せよ。無関係な情報は一切不要。"
+                    policy = f"【厳守：セクター限定モード】選択されたセクター『{', '.join(selected_sectors)}』に関する情報のみを出力せよ。無関係な他セクターの情報は一切不要。"
                 else:
-                    policy = f"【通常モード】最重要・注目銘柄（{target_list}）を中心に、材料が出た他銘柄も漏らさず分析せよ。セクター（{', '.join(selected_sectors)}）の動向も重視せよ。"
+                    policy = f"【通常モード】注目銘柄（{target_list}）を中心に分析しつつ、材料が出た他銘柄もディスカバリーして幅広く報告せよ。"
 
                 prompt = f"""
-                あなたは凄腕の投資アナリストです。以下の【もとみさん専用・絶対遵守ルール】に完全に従って分析せよ。
+                あなたはプロの投資アナリストです。以下の【絶対遵守ルール】に従って出力せよ。
                 
-                【もとみさん専用・絶対遵守ルール】
-                1. 挨拶、前置き、投資判断への免責事項（「投資は自己責任で」等）やポエムは一切書くな。すぐにリストから出力せよ。
+                【絶対遵守ルール】
+                1. 挨拶、前置き、自己責任などの免責文は一切書かず、すぐに結果を出力せよ。
                 2. {policy}
-                3. 監視銘柄は「保有している前提」で分析せよ。そのため、売り材料（悪材料・ネガティブ要因）が出た場合は絶対に隠さず明確に提示せよ。ただし、ショート（空売り）の提案は絶対に行わないこと。
-                4. 上場廃止銘柄は絶対に扱わないこと。
-                5. 見出しは必ず **【銘柄名(コード) | 現在価格 | 騰落率】** とし、価格データを正確に記載せよ。個別銘柄ではなくセクター全体の場合は **【セクター：〇〇】** とせよ。
-                6. 各分析の冒頭に必ず **【判定：ポジティブ/ネガティブ/中立】** と **【予想インパクト：+〇%上昇予測 / -〇%下落予測】** を明確に断言せよ。
-                7. 各ニュースの事実を端的に記載し、間接的影響・テクニカル予測を含めること。
-                8. 【重要: バグ防止】文末に必ず情報源として「(No.Xより)」と添えること。この「X」は必ず入力されたニュースリストの番号（0, 1, 2...）を使うこと。証券コード（例: 6501）をニュース番号と混同して「(No.6501より)」と書くのは厳禁。
-                9. 回答の最後に必ず以下の1文をそのまま出力して締めくくること。
-                   「※上記以外の銘柄については、本日特筆すべき個別材料はありません（全体相場・マクロ要因に連動して推移）」
+                3. 【ハイブリッド出力】全体に波及するマクロニュースはセクター（【セクター：〇〇】）でまとめ、個別に大きな材料がある銘柄は個別に見出しを立てて詳しく分析せよ。
+                4. 【見出しとデータ】見出しは必ず **【銘柄名(コード) | 現在価格 | 騰落率】** とし、価格データを正確に記載せよ。
+                5. 【判定とインパクト】各分析の冒頭に必ず **【判定：ポジティブ/ネガティブ/中立】** と **【予想インパクト：+〇%上昇予測 / -〇%下落予測】** を断言せよ。
+                6. 【経済指標・連想・テクニカル】直接のニュースがない場合でも、為替や金利、**経済指標（CPI、雇用統計、要人発言など）**、同業種の動向から「間接的な影響」と「テクニカル予測」を必ず考察せよ。FX・為替の分析時は特に経済指標を最重視すること。
+                7. 【引用バグの防止】文末に必ず情報源として「(No.Xより)」と添えること。この「X」は入力されたニュースリストのインデックス番号（0, 1, 2...）のみを使うこと。証券コード（例: 6501）をニュース番号と混同して記載するのは絶対厳禁。
 
                 【現在の株価・騰落率】
                 {realtime_prices}
@@ -184,8 +182,14 @@ if st.sidebar.button(f"{market_choice} 分析を開始"):
                 {all_news_text}
                 """
                 
-                chat = model.start_chat(history=[])
-                response = chat.send_message(prompt)
+                try:
+                    model = genai.GenerativeModel("gemini-3.1-flash-lite-preview")
+                    chat = model.start_chat(history=[])
+                    response = chat.send_message(prompt)
+                except:
+                    model = genai.GenerativeModel("gemini-pro")
+                    chat = model.start_chat(history=[])
+                    response = chat.send_message(prompt)
                 
                 if response.text:
                     st.session_state.analysis_text = response.text
@@ -212,7 +216,7 @@ if st.session_state.analysis_text:
                     st.link_button("全文へ", n['link'])
                 
     with col2:
-        st.subheader("🤖 AI戦略分析（もとみさん専用）")
+        st.subheader("🤖 AI戦略分析")
         with st.container(height=800):
             with st.spinner("音声を生成中..."):
                 try:
