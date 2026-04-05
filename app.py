@@ -296,7 +296,6 @@ elif app_mode == "📈 急変動チャートAI照合":
     target_stock = st.sidebar.text_input("銘柄名・コードを入力", value="三菱重工", help="例: 三菱重工, 7011, エヌビディア, NVDA")
     period = st.sidebar.selectbox("表示期間", ["3mo", "6mo", "1y", "2y"], index=1)
     
-    # デフォルトを5.0%に戻しました
     threshold = st.sidebar.slider("急変動とみなすライン（±％）", min_value=1.0, max_value=20.0, value=5.0, step=0.5)
 
     raw_target = target_stock.strip().lower()
@@ -374,23 +373,8 @@ elif app_mode == "📈 急変動チャートAI照合":
                 except:
                     model = genai.GenerativeModel("gemini-pro")
                 
-                tech_prompt = f"""
-                あなたはプロのテクニカルアナリストです。
-                以下のデータは、銘柄「{target_stock}」の直近60日間の四本値と出来高です。
+                tech_prompt = "あなたはプロのテクニカルアナリストです。\n以下のデータは、銘柄「" + target_stock + "」の直近60日間の四本値と出来高です。\n\nこのデータから、以下を分析してください。\n1. 現在形成されている「チャートパターン」（ダブルボトム、ダブルトップ、三尊、トレンドラインの支持・抵抗、もみ合いなど）を具体的に見つけ出すこと。\n2. それを踏まえた今後の短期的な株価予想。\n\n【絶対遵守ルール】\n・挨拶、免責文（投資は自己責任等）は一切不要。すぐに結論を出力せよ。\n・必ず冒頭で【判定: 上昇予測 / 下落予測 / もみ合い】を断言すること。\n・買い目線、売り目線の両方を含めるが、ショート（空売り）の推奨は絶対に行わないこと。\n・なぜそう判断したのか、チャートの日付や価格の推移を根拠に論理的に解説すること。\n\n【直近60日間のデータ】\n" + chart_data_str
                 
-                このデータから、以下を分析してください。
-                1. 現在形成されている「チャートパターン」（ダブルボトム、ダブルトップ、三尊、トレンドラインの支持・抵抗、もみ合いなど）を具体的に見つけ出すこと。
-                2. それを踏まえた今後の短期的な株価予想。
-                
-                【絶対遵守ルール】
-                ・挨拶、免責文（投資は自己責任等）は一切不要。すぐに結論を出力せよ。
-                ・必ず冒頭で【判定: 上昇予測 / 下落予測 / もみ合い】を断言すること。
-                ・買い目線、売り目線の両方を含めるが、ショート（空売り）の推奨は絶対に行わないこと。
-                ・なぜそう判断したのか、チャートの日付や価格の推移を根拠に論理的に解説すること。
-
-                【直近60日間のデータ】
-                {chart_data_str}
-                """
                 with st.spinner("AIがチャートの形状（パターン）を分析中..."):
                     try:
                         response = model.generate_content(tech_prompt)
@@ -400,17 +384,18 @@ elif app_mode == "📈 急変動チャートAI照合":
                         st.error(f"分析エラー: {e}")
 
         st.markdown("---")
-        st.subheader(f"⚠️ 過去の急変動の答え合わせ（±{threshold}%以上）")
+        st.subheader("⚠️ 過去の急変動の答え合わせ（±" + str(threshold) + "%以上）")
 
         if volatile_days.empty:
             st.info("指定した期間・条件で大きく動いた日はありませんでした。左の「検知ライン」を下げてみてください。")
         else:
-            # 【エラー対策】コピペで改行バグが起きないよう、HTMLを安全なトリプルクォートで定義
+            # エラー防止のため完全な文字列結合で記述
             for date, row in volatile_days.iterrows():
                 date_str = date.strftime('%Y年%m月%d日')
                 change = row['Change_Pct']
                 close_price = row['Close']
                 color = "#00C896" if change > 0 else "#F92855"
+                sign = "+" if change > 0 else ""
                 
-                safe_html = f"""
-                <div style="font-size: 1.1em; margin-bottom: 8p
+                # 文字列の足し算でHTMLを作成（エラー絶対起きない仕様）
+                html_text = "<div style='margin-bottom:8px;'><b style='font-size:1.1em;'>📅 " + date_str + "</b> &nbsp;&nbsp; <span style='color:" + color + "; font-weight:bold; font-size:1.3em;'>" + sign + str(round(change, 2)) + "%</span> <spa
