@@ -108,7 +108,6 @@ def analyze_single_article(title, summary, api_key):
     genai.configure(api_key=api_key)
     model = genai.GenerativeModel("gemini-3.1-flash-lite-preview")
     
-    # トリプルクォート排除
     prompt_lines = [
         "この記事を投資家視点で端的に要約し、影響を予測してください。挨拶や免責文は一切不要。",
         "【出力フォーマット】",
@@ -210,7 +209,6 @@ if app_mode == "📰 ニュース・相場分析":
                     else:
                         policy = "【通常モード】注目銘柄（" + target_list + "）を中心に分析しつつ、材料が出た他銘柄もディスカバリーして幅広く報告せよ。"
 
-                    # トリプルクォート排除
                     main_prompt_lines = [
                         "あなたはプロの投資アナリストです。以下の【絶対遵守ルール】に従って出力せよ。",
                         "【絶対遵守ルール】",
@@ -377,7 +375,6 @@ elif app_mode == "📈 急変動チャートAI照合":
                 except:
                     model = genai.GenerativeModel("gemini-pro")
                 
-                # トリプルクォート排除
                 tech_prompt_lines = [
                     "あなたはプロのテクニカルアナリストです。",
                     "以下のデータは、銘柄「" + target_stock + "」の直近60日間の四本値と出来高です。",
@@ -407,4 +404,6 @@ elif app_mode == "📈 急変動チャートAI照合":
 
         if volatile_days.empty:
             st.info("指定した期間・条件で大きく動いた日はありませんでした。左の「検知ライン」を下げてみてください。")
-      
+        else:
+            # HTMLバグを回避するため、完全に標準のマークダウンと絵文字だけで表示します
+            for da
