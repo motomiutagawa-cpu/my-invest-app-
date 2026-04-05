@@ -296,7 +296,7 @@ elif app_mode == "📈 急変動チャートAI照合":
     target_stock = st.sidebar.text_input("銘柄名・コードを入力", value="三菱重工", help="例: 三菱重工, 7011, エヌビディア, NVDA")
     period = st.sidebar.selectbox("表示期間", ["3mo", "6mo", "1y", "2y"], index=1)
     
-    # 【修正】デフォルトを 5.0% に戻しました
+    # デフォルトを5.0%に戻しました
     threshold = st.sidebar.slider("急変動とみなすライン（±％）", min_value=1.0, max_value=20.0, value=5.0, step=0.5)
 
     raw_target = target_stock.strip().lower()
@@ -405,12 +405,12 @@ elif app_mode == "📈 急変動チャートAI照合":
         if volatile_days.empty:
             st.info("指定した期間・条件で大きく動いた日はありませんでした。左の「検知ライン」を下げてみてください。")
         else:
-            # 【修正】スマホで崩れないように横一列（ワンライン）のレイアウトに変更しました！
+            # 【エラー対策】コピペで改行バグが起きないよう、HTMLを安全なトリプルクォートで定義
             for date, row in volatile_days.iterrows():
                 date_str = date.strftime('%Y年%m月%d日')
                 change = row['Change_Pct']
                 close_price = row['Close']
                 color = "#00C896" if change > 0 else "#F92855"
                 
-                # 文字と数値を改行せずに表示
-                st.markdown(f"**📅 {date_str}** &nbsp;&nbsp; 
+                safe_html = f"""
+                <div style="font-size: 1.1em; margin-bottom: 8p
