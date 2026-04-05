@@ -7,60 +7,20 @@ import io
 from datetime import datetime, timedelta, timezone
 import time
 import yfinance as yf
+import plotly.graph_objects as go
+import pandas as pd
 
-# 画面設定
-st.set_page_config(page_title="AI投資アナリスト・プロ", layout="wide")
+# 画面設定 (必ず一番上)
+st.set_page_config(page_title="AI投資アナリスト・もとみさん専用", layout="wide")
 
-st.title("🌐 AI投資ニュース・プロ分析（機能集大成版）")
-
-# --- サイドバー設定 ---
-api_key = st.sidebar.text_input("APIキーを入力", type="password")
-
-st.sidebar.markdown("---")
-market_choice = st.sidebar.radio(
-    "分析対象を選択",
-    options=["日本株", "米国株", "先物・商品", "FX・為替"],
-    horizontal=True
-)
-
-st.sidebar.markdown("🕒 取得範囲")
-hours_range = st.sidebar.slider("過去何時間分を取得しますか？", min_value=1, max_value=72, value=24)
-
-# セクター選択
-st.sidebar.markdown("---")
-with st.sidebar.expander("🔍 注目セクターを選択"):
-    SECTOR_OPTIONS = ["防衛", "宇宙", "重工", "海運", "物流", "エネルギー", "資源・素材", "半導体", "ハイテク・AI", "金融・銀行", "商社", "自動車", "不動産", "電力・インフラ", "化学・素材"]
-    col_s1, col_s2 = st.columns(2)
-    if col_s1.button("全選択", key="sec_all"):
-        for s in SECTOR_OPTIONS: st.session_state[f"sec_{s}"] = True
-    if col_s2.button("全解除", key="sec_none"):
-        for s in SECTOR_OPTIONS: st.session_state[f"sec_{s}"] = False
-    selected_sectors = [s for s in SECTOR_OPTIONS if st.checkbox(s, key=f"sec_{s}", value=st.session_state.get(f"sec_{s}", False))]
-
-# 銘柄を絞る
-st.sidebar.markdown("---")
-st.sidebar.markdown("### 🎯 特定銘柄を深掘り")
-narrow_stocks = st.sidebar.text_area(
-    "銘柄名・コードを入力（ここに入力がある場合は最優先）",
-    placeholder="例: 7011, NVDA\nここに入力があれば、指定セクターも無視してこの銘柄のみを分析します。",
-)
-
-# 精鋭マスターリスト
+# --- グローバル設定・関数 ---
 CORE_WATCHLIST = {
-    "日本株": "6758, 8729, 186A, 5595, 6767, 7011, 7012, 7013, 6506, 5802, 5801, 5803, 9101, 9104, 9107, 6988, 3402, 7309, 8306, 8411, 8031, 8058, 9433, 9506, 9508, 7974, 5253, 7203, 7267, 6501, 8136, 1605",
+    "日本株": "三菱重工, 川崎重工, IHI, ソニーg, ソニーfg, トヨタ, 任天堂, アストロスケール, 安川電機, 住友電工, 古河電気工業, フジクラ, 東レ, 本田技研, 日立製作所, 東北電力, シマノ, acsl, 日東電工, 三菱UFJ, サンリオ, KDDI, 川崎汽船, 商船三井, 日本郵船, 三菱hcキャピタル, 三菱ケミカル, 伊藤忠, 日東紡績, 三菱マテリアル, 小松製作所, 三菱商事, オリックス, 楽天グループ, ディー・エヌ・エー, 三井不動産, 三井物産, igポート, Liberaware, メタプラネット, アドバンテスト, 東京エレクトロン, キーエンス, ファナック, 村田製作所, レーザーテック, イビデン, ディスコ, 信越化学工業, 第一生命, ヤマハ, 住友金属鉱山, エニーカラー, ソフトバンク, ソフトバンクg, キオクシア, 三井住友fg, みずほfg, 東邦銀行, アルコニックス, レンゴー, 楽天銀行, 細谷火工, QPSホールディングス, ブルーイノベーション, 名村造船所, カバー, inpex, ispace, スカパーjsat",
     "米国株": "AAPL, NVDA, GOOGL, AMZN, TSLA, MSFT, META, PLTR, RKLB, AVGO, BRK-B",
     "先物・商品": "^NK225, ^DJI, ^IXIC, CL=F, GC=F, ^TNX",
     "FX・為替": "USD/JPY, EUR/JPY, GBP/JPY, AUD/JPY, EUR/USD"
 }
 
-# セッション状態
-if "analysis_text" not in st.session_state: st.session_state.analysis_text = None
-if "fetched_news" not in st.session_state: st.session_state.fetched_news = []
-if "individual_summaries" not in st.session_state: st.session_state.individual_summaries = {}
-if "messages" not in st.session_state: st.session_state.messages = []
-if "chat_session" not in st.session_state: st.session_state.chat_session = None
-
-# --- 株価取得関数 ---
 def get_price_info(stock_str, market):
     items = [s.strip() for s in stock_str.replace("、", ",").split(",") if s.strip()]
     price_data = ""
@@ -105,13 +65,16 @@ def get_all_news(hours):
                     pub_time = datetime.fromtimestamp(time.mktime(pub_struct), timezone.utc)
                     if pub_time < time_threshold: continue
                 if entry.link in seen_links: continue
+                
+                if "福島" in entry.title or "カメラ" in entry.title:
+                    continue
+                    
                 news_list.append({"title": entry.title, "summary": entry.get("summary", ""), "link": entry.link, "source": "Yahoo" if "yahoo" in url else "ロイター" if "reuters" in url else "PR TIMES", "time": pub_time.astimezone(timezone(timedelta(hours=9))).strftime('%m/%d %H:%M') if pub_struct else "--:--"})
                 seen_links.add(entry.link)
         except: continue
     return news_list
 
-# --- 個別要約（4項目フォーマット） ---
-def analyze_single_article(title, summary):
+def analyze_single_article(title, summary, api_key):
     genai.configure(api_key=api_key)
     model = genai.GenerativeModel("gemini-3.1-flash-lite-preview")
     prompt = f"""
@@ -124,8 +87,7 @@ def analyze_single_article(title, summary):
     【タイトル】: {title}\n【本文】: {summary}
     """
     try:
-        response = model.generate_content(prompt)
-        return response.text
+        return model.generate_content(prompt).text
     except:
         try:
             model = genai.GenerativeModel("gemini-pro")
@@ -133,113 +95,261 @@ def analyze_single_article(title, summary):
         except Exception as e:
             return f"エラー: {e}"
 
-# --- 分析実行 ---
-if st.sidebar.button(f"{market_choice} 分析を開始"):
-    if not api_key: st.error("APIキーを入れてください。")
-    else:
-        st.session_state.analysis_text = None
-        st.session_state.chat_session = None
-        st.session_state.messages = []
-        genai.configure(api_key=api_key)
-        
-        with st.spinner("情報を戦略的に精査中..."):
-            try:
-                news_data = get_all_news(hours_range)
-                st.session_state.fetched_news = news_data
-                st.session_state.individual_summaries = {}
-                
-                target_list = narrow_stocks if narrow_stocks else CORE_WATCHLIST.get(market_choice)
-                realtime_prices = get_price_info(target_list, market_choice)
-                
-                all_news_text = ""
-                for i, n in enumerate(news_data):
-                    all_news_text += f"No.{i}: {n['title']}\n{n['summary']}\n\n"
-                
-                # 【厳格な絞り込みロジック】
-                if narrow_stocks:
-                    policy = f"【厳守：銘柄指定モード】あなたは指定された『{narrow_stocks}』に関する情報のみを分析する。これ以外の銘柄や、これに無関係なセクター情報は一切出力するな。"
-                elif selected_sectors:
-                    policy = f"【厳守：セクター限定モード】選択されたセクター『{', '.join(selected_sectors)}』に関する情報のみを出力せよ。無関係な他セクターの情報は一切不要。"
-                else:
-                    policy = f"【通常モード】注目銘柄（{target_list}）を中心に分析しつつ、材料が出た他銘柄もディスカバリーして幅広く報告せよ。"
+@st.cache_data(ttl=3600)
+def get_stock_data(ticker, per):
+    try:
+        tk = yf.Ticker(ticker)
+        df = tk.history(period=per)
+        if df.empty:
+            return None
+        df['Change_Pct'] = df['Close'].pct_change() * 100
+        return df
+    except:
+        return None
 
-                prompt = f"""
-                あなたはプロの投資アナリストです。以下の【絶対遵守ルール】に従って出力せよ。
-                
-                【絶対遵守ルール】
-                1. 挨拶、前置き、自己責任などの免責文は一切書かず、すぐに結果を出力せよ。
-                2. {policy}
-                3. 【ハイブリッド出力】全体に波及するマクロニュースはセクター（【セクター：〇〇】）でまとめ、個別に大きな材料がある銘柄は個別に見出しを立てて詳しく分析せよ。
-                4. 【見出しとデータ】見出しは必ず **【銘柄名(コード) | 現在価格 | 騰落率】** とし、価格データを正確に記載せよ。
-                5. 【判定とインパクト】各分析の冒頭に必ず **【判定：ポジティブ/ネガティブ/中立】** と **【予想インパクト：+〇%上昇予測 / -〇%下落予測】** を断言せよ。
-                6. 【経済指標・連想・テクニカル】直接のニュースがない場合でも、為替や金利、**経済指標（CPI、雇用統計、要人発言など）**、同業種の動向から「間接的な影響」と「テクニカル予測」を必ず考察せよ。FX・為替の分析時は特に経済指標を最重視すること。
-                7. 【引用バグの防止】文末に必ず情報源として「(No.Xより)」と添えること。この「X」は入力されたニュースリストのインデックス番号（0, 1, 2...）のみを使うこと。証券コード（例: 6501）をニュース番号と混同して記載するのは絶対厳禁。
+# --- 共通サイドバー ---
+st.sidebar.markdown("### 🔄 アプリモード切替")
+app_mode = st.sidebar.radio("使いたいツールを選択してください", ["📰 ニュース・相場分析", "📈 急変動チャートAI照合"])
+st.sidebar.markdown("---")
+api_key = st.sidebar.text_input("APIキーを入力", type="password")
+st.sidebar.markdown("---")
 
-                【現在の株価・騰落率】
-                {realtime_prices}
+# ==========================================
+# モード1: ニュース・相場分析
+# ==========================================
+if app_mode == "📰 ニュース・相場分析":
+    st.title("🌐 AI投資ニュース・プロ分析（機能集大成版）")
+    
+    market_choice = st.sidebar.radio("分析対象を選択", ["日本株", "米国株", "先物・商品", "FX・為替"], horizontal=True)
+    hours_range = st.sidebar.slider("過去何時間分を取得しますか？", 1, 72, 24)
+    
+    st.sidebar.markdown("---")
+    with st.sidebar.expander("🔍 注目セクターを選択"):
+        SECTOR_OPTIONS = ["防衛", "宇宙", "重工", "海運", "物流", "エネルギー", "資源・素材", "半導体", "ハイテク・AI", "金融・銀行", "商社", "自動車", "不動産", "電力・インフラ", "化学・素材"]
+        col_s1, col_s2 = st.columns(2)
+        if col_s1.button("全選択", key="sec_all"):
+            for s in SECTOR_OPTIONS: st.session_state[f"sec_{s}"] = True
+        if col_s2.button("全解除", key="sec_none"):
+            for s in SECTOR_OPTIONS: st.session_state[f"sec_{s}"] = False
+        selected_sectors = [s for s in SECTOR_OPTIONS if st.checkbox(s, key=f"sec_{s}", value=st.session_state.get(f"sec_{s}", False))]
 
-                ニュースリスト:
-                {all_news_text}
-                """
-                
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("### 🎯 特定銘柄を深掘り")
+    narrow_stocks = st.sidebar.text_area("銘柄名・コードを入力（ここに入力がある場合は最優先）", placeholder="例: 7011, NVDA")
+
+    if "analysis_text" not in st.session_state: st.session_state.analysis_text = None
+    if "fetched_news" not in st.session_state: st.session_state.fetched_news = []
+    if "individual_summaries" not in st.session_state: st.session_state.individual_summaries = {}
+    if "messages" not in st.session_state: st.session_state.messages = []
+    if "chat_session" not in st.session_state: st.session_state.chat_session = None
+
+    if st.sidebar.button(f"{market_choice} 分析を開始"):
+        if not api_key: st.error("APIキーを入れてください。")
+        else:
+            st.session_state.analysis_text = None
+            st.session_state.chat_session = None
+            st.session_state.messages = []
+            genai.configure(api_key=api_key)
+            
+            with st.spinner("情報を戦略的に精査中..."):
                 try:
-                    model = genai.GenerativeModel("gemini-3.1-flash-lite-preview")
-                    chat = model.start_chat(history=[])
-                    response = chat.send_message(prompt)
-                except:
-                    model = genai.GenerativeModel("gemini-pro")
-                    chat = model.start_chat(history=[])
-                    response = chat.send_message(prompt)
-                
-                if response.text:
-                    st.session_state.analysis_text = response.text
-                    st.session_state.chat_session = chat
-                else:
-                    st.error("AIからの応答が空でした。")
-            except Exception as e: 
-                st.error(f"分析処理中にエラーが発生しました: {e}")
+                    news_data = get_all_news(hours_range)
+                    st.session_state.fetched_news = news_data
+                    st.session_state.individual_summaries = {}
+                    
+                    target_list = narrow_stocks if narrow_stocks else CORE_WATCHLIST.get(market_choice)
+                    realtime_prices = get_price_info(target_list, market_choice)
+                    
+                    all_news_text = ""
+                    for i, n in enumerate(news_data):
+                        all_news_text += f"No.{i}: {n['title']}\n{n['summary']}\n\n"
+                    
+                    if narrow_stocks:
+                        policy = f"【厳守：銘柄指定モード】あなたは指定された『{narrow_stocks}』に関する情報のみを分析する。これ以外の銘柄や、これに無関係なセクター情報は一切出力するな。"
+                    elif selected_sectors:
+                        policy = f"【厳守：セクター限定モード】選択されたセクター『{', '.join(selected_sectors)}』に関する情報のみを出力せよ。無関係な他セクターの情報は一切不要。"
+                    else:
+                        policy = f"【通常モード】注目銘柄（{target_list}）を中心に分析しつつ、材料が出た他銘柄もディスカバリーして幅広く報告せよ。"
 
-# --- 表示エリア ---
-if st.session_state.analysis_text:
-    col1, col2 = st.columns([1, 1])
-    with col1:
-        st.subheader("📊 ニュースフィード")
-        with st.container(height=800):
-            for i, n in enumerate(st.session_state.fetched_news):
-                with st.expander(f"No.{i}: 📌 [{n['time']}] {n['title']}"):
-                    st.write(n['summary'])
-                    if st.button(f"✨ AI要約 (No.{i})", key=f"btn_{i}"):
-                        with st.spinner("要約中..."):
-                            st.session_state.individual_summaries[i] = analyze_single_article(n['title'], n['summary'])
-                    if i in st.session_state.individual_summaries:
-                        st.info(st.session_state.individual_summaries[i])
-                    st.link_button("全文へ", n['link'])
-                
-    with col2:
-        st.subheader("🤖 AI戦略分析")
-        with st.container(height=800):
-            with st.spinner("音声を生成中..."):
-                try:
-                    audio_bytes = asyncio.run(generate_voice(st.session_state.analysis_text))
-                    st.audio(audio_bytes, format='audio/mp3')
+                    prompt = f"""
+                    あなたはプロの投資アナリストです。以下の【絶対遵守ルール】に従って出力せよ。
+                    
+                    【絶対遵守ルール】
+                    1. 挨拶、前置き、自己責任などの免責文は一切書かず、すぐに結果を出力せよ。
+                    2. {policy}
+                    3. 【ハイブリッド出力】全体に波及するマクロニュースはセクター（【セクター：〇〇】）でまとめ、個別に大きな材料がある銘柄は個別に見出しを立てて詳しく分析せよ。
+                    4. 【見出しとデータ】見出しは必ず **【銘柄名(コード) | 現在価格 | 騰落率】** とし、価格データを正確に記載せよ。
+                    5. 【判定とインパクト】各分析の冒頭に必ず **【判定：ポジティブ/ネガティブ/中立】** と **【予想インパクト：+〇%上昇予測 / -〇%下落予測】** を断言せよ。
+                    6. 【経済指標・連想・テクニカル】直接のニュースがない場合でも、為替や金利、**経済指標（CPI、雇用統計、要人発言など）**、同業種の動向から「間接的な影響」と「テクニカル予測」を必ず考察せよ。FX・為替の分析時は特に経済指標を最重視すること。
+                    7. 【引用バグの防止】文末に必ず情報源として「(No.Xより)」と添えること。この「X」は入力されたニュースリストのインデックス番号（0, 1, 2...）のみを使うこと。証券コード（例: 6501）をニュース番号と混同して記載するのは絶対厳禁。
+
+                    【現在の株価・騰落率】
+                    {realtime_prices}
+
+                    ニュースリスト:
+                    {all_news_text}
+                    """
+                    
+                    try:
+                        model = genai.GenerativeModel("gemini-3.1-flash-lite-preview")
+                        chat = model.start_chat(history=[])
+                        response = chat.send_message(prompt)
+                    except:
+                        model = genai.GenerativeModel("gemini-pro")
+                        chat = model.start_chat(history=[])
+                        response = chat.send_message(prompt)
+                    
+                    if response.text:
+                        st.session_state.analysis_text = response.text
+                        st.session_state.chat_session = chat
+                    else:
+                        st.error("AIからの応答が空でした。")
                 except Exception as e: 
-                    st.warning("音声生成をスキップしました。")
-            
-            st.write(st.session_state.analysis_text)
-            st.markdown("---")
-            for m in st.session_state.messages:
-                with st.chat_message(m["role"]): st.markdown(m["content"])
-            
-            if q := st.chat_input("さらに深掘り..."):
-                st.session_state.messages.append({"role": "user", "content": q})
-                with st.chat_message("user"): st.markdown(q)
-                with st.chat_message("assistant"):
-                    if st.session_state.chat_session:
-                        try:
-                            resp = st.session_state.chat_session.send_message(q)
-                            st.markdown(resp.text)
-                            st.session_state.messages.append({"role": "assistant", "content": resp.text})
-                        except Exception as e:
-                            st.error(f"チャットエラー: {e}")
-                    else: 
-                        st.error("分析を開始してください。")
+                    st.error(f"分析処理中にエラーが発生しました: {e}")
+
+    if st.session_state.analysis_text:
+        col1, col2 = st.columns([1, 1])
+        with col1:
+            st.subheader("📊 ニュースフィード")
+            with st.container(height=800):
+                for i, n in enumerate(st.session_state.fetched_news):
+                    with st.expander(f"No.{i}: 📌 [{n['time']}] {n['title']}"):
+                        st.write(n['summary'])
+                        if st.button(f"✨ AI要約 (No.{i})", key=f"btn_news_{i}"):
+                            with st.spinner("要約中..."):
+                                st.session_state.individual_summaries[i] = analyze_single_article(n['title'], n['summary'], api_key)
+                        if i in st.session_state.individual_summaries:
+                            st.info(st.session_state.individual_summaries[i])
+                        st.link_button("全文へ", n['link'])
+                    
+        with col2:
+            st.subheader("🤖 AI戦略分析")
+            with st.container(height=800):
+                with st.spinner("音声を生成中..."):
+                    try:
+                        audio_bytes = asyncio.run(generate_voice(st.session_state.analysis_text))
+                        st.audio(audio_bytes, format='audio/mp3')
+                    except Exception as e: 
+                        st.warning("音声生成をスキップしました。")
+                
+                st.write(st.session_state.analysis_text)
+                st.markdown("---")
+                for m in st.session_state.messages:
+                    with st.chat_message(m["role"]): st.markdown(m["content"])
+                
+                if q := st.chat_input("さらに深掘り..."):
+                    st.session_state.messages.append({"role": "user", "content": q})
+                    with st.chat_message("user"): st.markdown(q)
+                    with st.chat_message("assistant"):
+                        if st.session_state.chat_session:
+                            try:
+                                resp = st.session_state.chat_session.send_message(q)
+                                st.markdown(resp.text)
+                                st.session_state.messages.append({"role": "assistant", "content": resp.text})
+                            except Exception as e:
+                                st.error(f"チャットエラー: {e}")
+                        else: 
+                            st.error("分析を開始してください。")
+
+# ==========================================
+# モード2: 急変動チャート分析
+# ==========================================
+elif app_mode == "📈 急変動チャートAI照合":
+    st.title("📈 急変動チャート ＆ 過去ニュース照合AI")
+    st.markdown("過去のチャートから大きく動いた日を自動検知し、「なぜ動いたのか」をAIが過去データから照合します。")
+
+    st.sidebar.markdown("### ⚙️ チャート検知設定")
+    target_stock = st.sidebar.text_input("銘柄コード・ティッカー", value="7011", help="日本株は4桁の数字、米国株はティッカー")
+    period = st.sidebar.selectbox("表示期間", ["3mo", "6mo", "1y", "2y"], index=1)
+    threshold = st.sidebar.slider("急変動とみなすライン（±％）", min_value=1.0, max_value=20.0, value=5.0, step=0.5)
+
+    ticker_symbol = target_stock.strip()
+    if ticker_symbol.isdigit() and len(ticker_symbol) == 4:
+        ticker_symbol = f"{ticker_symbol}.T"
+
+    df = get_stock_data(ticker_symbol, period)
+
+    if df is not None:
+        fig = go.Figure(data=[go.Candlestick(x=df.index,
+                        open=df['Open'],
+                        high=df['High'],
+                        low=df['Low'],
+                        close=df['Close'],
+                        name="価格")])
+
+        volatile_days = df[df['Change_Pct'].abs() >= threshold]
+
+        if not volatile_days.empty:
+            fig.add_trace(go.Scatter(
+                x=volatile_days.index,
+                y=volatile_days['High'] * 1.02,
+                mode='markers+text',
+                marker=dict(symbol='triangle-down', size=12, color='blue'),
+                text=[f"{val:+.1f}%" for val in volatile_days['Change_Pct']],
+                textposition="top center",
+                name="急変動サイン"
+            ))
+
+        fig.update_layout(
+            title=f"【{target_stock}】のローソク足チャート（期間: {period}）",
+            yaxis_title="株価",
+            xaxis_rangeslider_visible=False,
+            height=500,
+            margin=dict(l=0, r=0, t=40, b=0)
+        )
+        
+        st.plotly_chart(fig, use_container_width=True)
+
+        st.markdown("---")
+        st.subheader(f"⚠️ 基準（±{threshold}%）を超えた急変動日")
+
+        if volatile_days.empty:
+            st.info("指定した期間・条件で大きく動いた日はありませんでした。左の「検知ライン」を下げてみてください。")
+        else:
+            for date, row in volatile_days.iterrows():
+                date_str = date.strftime('%Y年%m月%d日')
+                change = row['Change_Pct']
+                close_price = row['Close']
+                
+                col1, col2, col3 = st.columns([1.5, 1, 3])
+                
+                with col1:
+                    st.write(f"**📅 {date_str}**")
+                with col2:
+                    color = "red" if change > 0 else "blue"
+                    st.markdown(f"<span style='color:{color}; font-weight:bold;'>{change:+.2f}%</span> (￥{close_price:,.1f})", unsafe_allow_html=True)
+                with col3:
+                    if st.button(f"🔍 なぜ動いた？（AI過去照合）", key=f"btn_chart_{date_str}"):
+                        if not api_key:
+                            st.error("左のサイドバーにAPIキーを入力してください。")
+                        else:
+                            genai.configure(api_key=api_key)
+                            try:
+                                model = genai.GenerativeModel("gemini-3.1-flash-lite-preview")
+                            except:
+                                model = genai.GenerativeModel("gemini-pro")
+                            
+                            prompt = f"""
+                            あなたは凄腕の投資アナリストです。
+                            銘柄「{target_stock}」の株価が、【{date_str}】に前日比 {change:+.2f}% と急変動しました。
+                            あなたの知識ベースから、この日（または前日の引け後）に発表された決算、IR、ニュース、マクロ要因などを特定し、なぜこれほど株価が動いたのかを解説してください。
+
+                            【絶対遵守ルール】
+                            1. 挨拶、前置き、自己責任等の免責文は一切書かず、すぐに事実を出力せよ。
+                            2. 投資に関係ない話は禁止。ショート（空売り）の提案も禁止。
+                            3. 見出しは **【{target_stock} | {date_str}の変動理由】** とすること。
+                            4. その日に出た個別の材料（決算、修正、提携など）を最優先で解説し、該当がない場合はセクターやマクロの動きから理由を論理的に推測せよ。
+                            5. 最後に、この材料が当時 **【ポジティブ / ネガティブ】** どちらに受け取られたのかを断言せよ。
+                            """
+                            
+                            with st.spinner(f"{date_str} の過去ニュースと材料を検索・分析中..."):
+                                try:
+                                    response = model.generate_content(prompt)
+                                    st.success("✅ 過去データの照合完了")
+                                    st.write(response.text)
+                                except Exception as e:
+                                    st.error(f"分析エラー: {e}")
+                st.divider()
+
+    else:
+        st.warning("株価データが取得できませんでした。銘柄コードが正しいか確認してください。")
