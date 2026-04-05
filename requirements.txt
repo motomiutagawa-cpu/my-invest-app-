@@ -3,3 +3,5 @@ feedparser
 google-generativeai
 edge-tts
 yfinance
+plotly
+pandas
