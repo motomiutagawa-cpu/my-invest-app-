@@ -152,7 +152,7 @@ st.sidebar.markdown("---")
 # モード1: ニュース・相場分析
 # ==========================================
 if app_mode == "📰 ニュース・相場分析":
-    st.title("🌐 AI投資ニュース・プロ分析（機能集大成版）")
+    st.title("🌐 AI投資ニュース・プロ分析")
     
     market_choice = st.sidebar.radio("分析対象を選択", ["日本株", "米国株", "先物・商品", "FX・為替"], horizontal=True)
     hours_range = st.sidebar.slider("過去何時間分を取得しますか？", 1, 72, 24)
@@ -286,18 +286,18 @@ if app_mode == "📰 ニュース・相場分析":
                             st.error("分析を開始してください。")
 
 # ==========================================
-# モード2: 急変動チャート分析 (moomooスタイル・陽線緑)
+# モード2: 急変動チャート分析
 # ==========================================
 elif app_mode == "📈 急変動チャートAI照合":
     st.title("📈 急変動チャート ＆ AIテクニカル予想")
-    st.markdown("過去の大きく動いた日をAIが照合し、現在のチャートパターンから未来の動きを予測します。")
+    st.info("💡 **ヒント:** チャート上の「▼マーク」の急変理由は、画面を下へスクロールした先のリストから確認できます！")
 
     st.sidebar.markdown("### ⚙️ チャート検知設定")
     target_stock = st.sidebar.text_input("銘柄名・コードを入力", value="三菱重工", help="例: 三菱重工, 7011, エヌビディア, NVDA")
     period = st.sidebar.selectbox("表示期間", ["3mo", "6mo", "1y", "2y"], index=1)
     
-    # 【変更箇所】デフォルトの検知ラインを 5.0% から 2.0% に下げて、リストが出やすくしました！
-    threshold = st.sidebar.slider("急変動とみなすライン（±％）", min_value=1.0, max_value=20.0, value=2.0, step=0.5)
+    # 【修正】デフォルトを 5.0% に戻しました
+    threshold = st.sidebar.slider("急変動とみなすライン（±％）", min_value=1.0, max_value=20.0, value=5.0, step=0.5)
 
     raw_target = target_stock.strip().lower()
     ticker_symbol = STOCK_NAME_MAP.get(raw_target, target_stock.strip())
@@ -346,7 +346,7 @@ elif app_mode == "📈 急変動チャートAI照合":
             template='plotly_dark',
             title=f"【{target_stock} ({ticker_symbol})】 日足チャート",
             xaxis_rangeslider_visible=False,
-            height=650,
+            height=500,
             margin=dict(l=10, r=10, t=50, b=10),
             showlegend=False,
             hovermode='x unified',
@@ -405,13 +405,12 @@ elif app_mode == "📈 急変動チャートAI照合":
         if volatile_days.empty:
             st.info("指定した期間・条件で大きく動いた日はありませんでした。左の「検知ライン」を下げてみてください。")
         else:
+            # 【修正】スマホで崩れないように横一列（ワンライン）のレイアウトに変更しました！
             for date, row in volatile_days.iterrows():
                 date_str = date.strftime('%Y年%m月%d日')
                 change = row['Change_Pct']
                 close_price = row['Close']
+                color = "#00C896" if change > 0 else "#F92855"
                 
-                col1, col2, col3 = st.columns([1.5, 1, 3])
-                
-                with col1:
-                    st.write(f"**📅 {date_str}**")
-             
+                # 文字と数値を改行せずに表示
+                st.markdown(f"**📅 {date_str}** &nbsp;&nbsp; 
