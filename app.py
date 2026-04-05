@@ -21,16 +21,49 @@ CORE_WATCHLIST = {
     "FX・為替": "USD/JPY, EUR/JPY, GBP/JPY, AUD/JPY, EUR/USD"
 }
 
+# --- 銘柄名 → 証券コード 変換辞書 ---
+STOCK_NAME_MAP = {
+    # 日本株
+    "三菱重工": "7011", "川崎重工": "7012", "ihi": "7013", "ソニーg": "6758", "ソニーfg": "5814",
+    "トヨタ": "7203", "トヨタ自動車": "7203", "任天堂": "7974", "アストロスケール": "186A", 
+    "安川電機": "6506", "住友電工": "5802", "古河電気工業": "5801", "古河電工": "5801", "フジクラ": "5803", 
+    "東レ": "3402", "本田技研": "7267", "ホンダ": "7267", "日立製作所": "6501", "日立": "6501", 
+    "東北電力": "9506", "シマノ": "7309", "acsl": "6232", "日東電工": "6988", "三菱ufj": "8306", 
+    "サンリオ": "8136", "kddi": "9433", "川崎汽船": "9107", "商船三井": "9104", "日本郵船": "9101",
+    "三菱hcキャピタル": "8593", "三菱ケミカル": "4188", "伊藤忠": "8001", "伊藤忠商事": "8001", 
+    "日東紡績": "3110", "日東紡": "3110", "三菱マテリアル": "5711", "小松製作所": "6301", "コマツ": "6301",
+    "三菱商事": "8058", "オリックス": "8591", "楽天グループ": "4755", "楽天": "4755", 
+    "ディー・エヌ・エー": "2432", "dena": "2432", "三井不動産": "8801", "三井物産": "8031", 
+    "igポート": "3791", "liberaware": "218A", "メタプラネット": "3350", "アドバンテスト": "6857", 
+    "東京エレクトロン": "8035", "キーエンス": "6861", "ファナック": "6954", "村田製作所": "6981", 
+    "レーザーテック": "6920", "イビデン": "4062", "ディスコ": "6146", "信越化学工業": "4063", "信越化学": "4063",
+    "第一生命": "8750", "ヤマハ": "7951", "住友金属鉱山": "5713", "エニーカラー": "5032", "anycolor": "5032",
+    "ソフトバンク": "9434", "ソフトバンクg": "9984", "三井住友fg": "8316", "みずほfg": "8411", 
+    "東邦銀行": "8346", "アルコニックス": "3036", "レンゴー": "3941", "楽天銀行": "5838", 
+    "細谷火工": "4274", "qpsホールディングス": "5595", "qps": "5595", "ブルーイノベーション": "5597", 
+    "名村造船所": "7014", "カバー": "5253", "cover": "5253", "inpex": "1605", "ispace": "9348", 
+    "スカパーjsat": "9412", "スカパー": "9412",
+    # 米国株
+    "アップル": "AAPL", "エヌビディア": "NVDA", "グーグル": "GOOGL", "アマゾン": "AMZN", 
+    "テスラ": "TSLA", "マイクロソフト": "MSFT", "メタ": "META", "パランティア": "PLTR", 
+    "ロケットラボ": "RKLB", "ブロードコム": "AVGO", "バークシャー": "BRK-B"
+}
+
 def get_price_info(stock_str, market):
     items = [s.strip() for s in stock_str.replace("、", ",").split(",") if s.strip()]
     price_data = ""
     for item in items:
-        ticker_symbol = item
-        if "/" in item or market == "FX・為替":
-            ticker_symbol = item.replace("/", "").replace(" ", "")
+        # 銘柄名をコードに変換（辞書にない場合はそのまま）
+        raw_item = item.lower()
+        ticker_symbol = STOCK_NAME_MAP.get(raw_item, item)
+        
+        if "/" in ticker_symbol or market == "FX・為替":
+            ticker_symbol = ticker_symbol.replace("/", "").replace(" ", "")
             if not ticker_symbol.endswith("=X"): ticker_symbol += "=X"
-        elif market == "日本株" and len(item) == 4 and item.isdigit():
-            ticker_symbol = f"{item}.T"
+        elif market == "日本株" and len(ticker_symbol) == 4 and ticker_symbol.isdigit():
+            ticker_symbol = f"{ticker_symbol}.T"
+        elif market == "日本株" and len(ticker_symbol) == 4 and ticker_symbol[:-1].isdigit() and ticker_symbol[-1].isalpha():
+            ticker_symbol = f"{ticker_symbol}.T" # 186A等の対応
         
         try:
             tk = yf.Ticker(ticker_symbol)
@@ -135,7 +168,7 @@ if app_mode == "📰 ニュース・相場分析":
 
     st.sidebar.markdown("---")
     st.sidebar.markdown("### 🎯 特定銘柄を深掘り")
-    narrow_stocks = st.sidebar.text_area("銘柄名・コードを入力（ここに入力がある場合は最優先）", placeholder="例: 7011, NVDA")
+    narrow_stocks = st.sidebar.text_area("銘柄名・コードを入力（ここに入力がある場合は最優先）", placeholder="例: 三菱重工, NVDA")
 
     if "analysis_text" not in st.session_state: st.session_state.analysis_text = None
     if "fetched_news" not in st.session_state: st.session_state.fetched_news = []
@@ -259,13 +292,18 @@ elif app_mode == "📈 急変動チャートAI照合":
     st.markdown("過去のチャートから大きく動いた日を自動検知し、「なぜ動いたのか」をAIが過去データから照合します。")
 
     st.sidebar.markdown("### ⚙️ チャート検知設定")
-    target_stock = st.sidebar.text_input("銘柄コード・ティッカー", value="7011", help="日本株は4桁の数字、米国株はティッカー")
+    target_stock = st.sidebar.text_input("銘柄名・コードを入力", value="三菱重工", help="例: 三菱重工, 7011, エヌビディア, NVDA")
     period = st.sidebar.selectbox("表示期間", ["3mo", "6mo", "1y", "2y"], index=1)
     threshold = st.sidebar.slider("急変動とみなすライン（±％）", min_value=1.0, max_value=20.0, value=5.0, step=0.5)
 
-    ticker_symbol = target_stock.strip()
+    # 銘柄名をコードに自動変換
+    raw_target = target_stock.strip().lower()
+    ticker_symbol = STOCK_NAME_MAP.get(raw_target, target_stock.strip())
+
     if ticker_symbol.isdigit() and len(ticker_symbol) == 4:
         ticker_symbol = f"{ticker_symbol}.T"
+    elif len(ticker_symbol) == 4 and ticker_symbol[:-1].isdigit() and ticker_symbol[-1].isalpha():
+        ticker_symbol = f"{ticker_symbol}.T" # 186A等の対応
 
     df = get_stock_data(ticker_symbol, period)
 
@@ -291,7 +329,7 @@ elif app_mode == "📈 急変動チャートAI照合":
             ))
 
         fig.update_layout(
-            title=f"【{target_stock}】のローソク足チャート（期間: {period}）",
+            title=f"【{target_stock} ({ticker_symbol})】のローソク足チャート（期間: {period}）",
             yaxis_title="株価",
             xaxis_rangeslider_visible=False,
             height=500,
@@ -331,7 +369,7 @@ elif app_mode == "📈 急変動チャートAI照合":
                             
                             prompt = f"""
                             あなたは凄腕の投資アナリストです。
-                            銘柄「{target_stock}」の株価が、【{date_str}】に前日比 {change:+.2f}% と急変動しました。
+                            銘柄「{target_stock}（{ticker_symbol}）」の株価が、【{date_str}】に前日比 {change:+.2f}% と急変動しました。
                             あなたの知識ベースから、この日（または前日の引け後）に発表された決算、IR、ニュース、マクロ要因などを特定し、なぜこれほど株価が動いたのかを解説してください。
 
                             【絶対遵守ルール】
@@ -352,4 +390,4 @@ elif app_mode == "📈 急変動チャートAI照合":
                 st.divider()
 
     else:
-        st.warning("株価データが取得できませんでした。銘柄コードが正しいか確認してください。")
+        st.warning(f"「{target_stock}」の株価データが取得できませんでした。辞書にない銘柄の場合は、直接証券コード（例: 7011）を入力してください。")
