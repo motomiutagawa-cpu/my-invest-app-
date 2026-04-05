@@ -8,6 +8,7 @@ from datetime import datetime, timedelta, timezone
 import time
 import yfinance as yf
 import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 import pandas as pd
 
 # 画面設定 (必ず一番上)
@@ -21,9 +22,7 @@ CORE_WATCHLIST = {
     "FX・為替": "USD/JPY, EUR/JPY, GBP/JPY, AUD/JPY, EUR/USD"
 }
 
-# --- 銘柄名 → 証券コード 変換辞書 ---
 STOCK_NAME_MAP = {
-    # 日本株
     "三菱重工": "7011", "川崎重工": "7012", "ihi": "7013", "ソニーg": "6758", "ソニーfg": "5814",
     "トヨタ": "7203", "トヨタ自動車": "7203", "任天堂": "7974", "アストロスケール": "186A", 
     "安川電機": "6506", "住友電工": "5802", "古河電気工業": "5801", "古河電工": "5801", "フジクラ": "5803", 
@@ -43,7 +42,6 @@ STOCK_NAME_MAP = {
     "細谷火工": "4274", "qpsホールディングス": "5595", "qps": "5595", "ブルーイノベーション": "5597", 
     "名村造船所": "7014", "カバー": "5253", "cover": "5253", "inpex": "1605", "ispace": "9348", 
     "スカパーjsat": "9412", "スカパー": "9412",
-    # 米国株
     "アップル": "AAPL", "エヌビディア": "NVDA", "グーグル": "GOOGL", "アマゾン": "AMZN", 
     "テスラ": "TSLA", "マイクロソフト": "MSFT", "メタ": "META", "パランティア": "PLTR", 
     "ロケットラボ": "RKLB", "ブロードコム": "AVGO", "バークシャー": "BRK-B"
@@ -53,7 +51,6 @@ def get_price_info(stock_str, market):
     items = [s.strip() for s in stock_str.replace("、", ",").split(",") if s.strip()]
     price_data = ""
     for item in items:
-        # 銘柄名をコードに変換（辞書にない場合はそのまま）
         raw_item = item.lower()
         ticker_symbol = STOCK_NAME_MAP.get(raw_item, item)
         
@@ -63,7 +60,7 @@ def get_price_info(stock_str, market):
         elif market == "日本株" and len(ticker_symbol) == 4 and ticker_symbol.isdigit():
             ticker_symbol = f"{ticker_symbol}.T"
         elif market == "日本株" and len(ticker_symbol) == 4 and ticker_symbol[:-1].isdigit() and ticker_symbol[-1].isalpha():
-            ticker_symbol = f"{ticker_symbol}.T" # 186A等の対応
+            ticker_symbol = f"{ticker_symbol}.T"
         
         try:
             tk = yf.Ticker(ticker_symbol)
@@ -136,6 +133,12 @@ def get_stock_data(ticker, per):
         if df.empty:
             return None
         df['Change_Pct'] = df['Close'].pct_change() * 100
+        # 移動平均線の計算
+        df['MA5'] = df['Close'].rolling(window=5).mean()
+        df['MA20'] = df['Close'].rolling(window=20).mean()
+        df['MA60'] = df['Close'].rolling(window=60).mean()
+        # 出来高のカラーリング（陽線＝緑、陰線＝赤に変更）
+        df['Color'] = df.apply(lambda row: '#00C896' if row['Close'] >= row['Open'] else '#F92855', axis=1)
         return df
     except:
         return None
@@ -285,109 +288,131 @@ if app_mode == "📰 ニュース・相場分析":
                             st.error("分析を開始してください。")
 
 # ==========================================
-# モード2: 急変動チャート分析
+# モード2: 急変動チャート分析 (moomooスタイル・陽線緑)
 # ==========================================
 elif app_mode == "📈 急変動チャートAI照合":
-    st.title("📈 急変動チャート ＆ 過去ニュース照合AI")
-    st.markdown("過去のチャートから大きく動いた日を自動検知し、「なぜ動いたのか」をAIが過去データから照合します。")
+    st.title("📈 急変動チャート ＆ AIテクニカル予想")
+    st.markdown("過去の大きく動いた日をAIが照合し、現在のチャートパターンから未来の動きを予測します。")
 
     st.sidebar.markdown("### ⚙️ チャート検知設定")
     target_stock = st.sidebar.text_input("銘柄名・コードを入力", value="三菱重工", help="例: 三菱重工, 7011, エヌビディア, NVDA")
     period = st.sidebar.selectbox("表示期間", ["3mo", "6mo", "1y", "2y"], index=1)
     threshold = st.sidebar.slider("急変動とみなすライン（±％）", min_value=1.0, max_value=20.0, value=5.0, step=0.5)
 
-    # 銘柄名をコードに自動変換
     raw_target = target_stock.strip().lower()
     ticker_symbol = STOCK_NAME_MAP.get(raw_target, target_stock.strip())
 
     if ticker_symbol.isdigit() and len(ticker_symbol) == 4:
         ticker_symbol = f"{ticker_symbol}.T"
     elif len(ticker_symbol) == 4 and ticker_symbol[:-1].isdigit() and ticker_symbol[-1].isalpha():
-        ticker_symbol = f"{ticker_symbol}.T" # 186A等の対応
+        ticker_symbol = f"{ticker_symbol}.T"
 
     df = get_stock_data(ticker_symbol, period)
 
     if df is not None:
-        fig = go.Figure(data=[go.Candlestick(x=df.index,
-                        open=df['Open'],
-                        high=df['High'],
-                        low=df['Low'],
-                        close=df['Close'],
-                        name="価格")])
+        # moomoo風サブプロット (上: ローソク+MA, 下: 出来高)
+        fig = make_subplots(rows=2, cols=1, shared_xaxes=True, row_heights=[0.75, 0.25], vertical_spacing=0.03)
 
+        # 1. ローソク足 (陽線: 緑 #00C896, 陰線: 赤 #F92855)
+        fig.add_trace(go.Candlestick(
+            x=df.index, open=df['Open'], high=df['High'], low=df['Low'], close=df['Close'],
+            increasing_line_color='#00C896', increasing_fillcolor='#00C896',
+            decreasing_line_color='#F92855', decreasing_fillcolor='#F92855',
+            name="価格"
+        ), row=1, col=1)
+
+        # 2. 移動平均線 (MA5, MA20, MA60)
+        fig.add_trace(go.Scatter(x=df.index, y=df['MA5'], line=dict(color='#F2B33D', width=1.2), name='MA5'), row=1, col=1)
+        fig.add_trace(go.Scatter(x=df.index, y=df['MA20'], line=dict(color='#8A5EE6', width=1.2), name='MA20'), row=1, col=1)
+        fig.add_trace(go.Scatter(x=df.index, y=df['MA60'], line=dict(color='#3283F6', width=1.2), name='MA60'), row=1, col=1)
+
+        # 3. 出来高バー
+        fig.add_trace(go.Bar(
+            x=df.index, y=df['Volume'], 
+            marker_color=df['Color'], 
+            name="出来高"
+        ), row=2, col=1)
+
+        # 急変動サインのプロット
         volatile_days = df[df['Change_Pct'].abs() >= threshold]
-
         if not volatile_days.empty:
             fig.add_trace(go.Scatter(
                 x=volatile_days.index,
                 y=volatile_days['High'] * 1.02,
                 mode='markers+text',
-                marker=dict(symbol='triangle-down', size=12, color='blue'),
+                marker=dict(symbol='triangle-down', size=12, color='white'),
                 text=[f"{val:+.1f}%" for val in volatile_days['Change_Pct']],
+                textfont=dict(color="white"),
                 textposition="top center",
-                name="急変動サイン"
-            ))
+                name="急変動"
+            ), row=1, col=1)
 
+        # moomoo風 ダークテーマ ＆ レイアウト設定
         fig.update_layout(
-            title=f"【{target_stock} ({ticker_symbol})】のローソク足チャート（期間: {period}）",
-            yaxis_title="株価",
+            template='plotly_dark',
+            title=f"【{target_stock} ({ticker_symbol})】 日足チャート",
             xaxis_rangeslider_visible=False,
-            height=500,
-            margin=dict(l=0, r=0, t=40, b=0)
+            height=650,
+            margin=dict(l=10, r=10, t=50, b=10),
+            showlegend=False,
+            hovermode='x unified', # 十字カーソルで情報一括表示
+            plot_bgcolor='#131722',
+            paper_bgcolor='#131722'
         )
         
+        # グリッド線の微調整
+        fig.update_xaxes(showgrid=True, gridcolor='#2B2B2B', zeroline=False)
+        fig.update_yaxes(showgrid=True, gridcolor='#2B2B2B', zeroline=False)
+
         st.plotly_chart(fig, use_container_width=True)
 
+        # --- テクニカルAI予想 ---
         st.markdown("---")
-        st.subheader(f"⚠️ 基準（±{threshold}%）を超えた急変動日")
+        st.subheader("🔮 今のチャートから未来を予想（テクニカルAI分析）")
+        if st.button("AIにチャートパターンを分析させる", type="primary"):
+            if not api_key:
+                st.error("左のサイドバーにAPIキーを入力してください。")
+            else:
+                recent_df = df.tail(60)[['Open', 'High', 'Low', 'Close', 'Volume']]
+                chart_data_str = recent_df.to_string()
+                
+                genai.configure(api_key=api_key)
+                try:
+                    model = genai.GenerativeModel("gemini-3.1-flash-lite-preview")
+                except:
+                    model = genai.GenerativeModel("gemini-pro")
+                
+                tech_prompt = f"""
+                あなたはプロのテクニカルアナリストです。
+                以下のデータは、銘柄「{target_stock}」の直近60日間の四本値と出来高です。
+                
+                このデータから、以下を分析してください。
+                1. 現在形成されている「チャートパターン」（ダブルボトム、ダブルトップ、三尊、トレンドラインの支持・抵抗、もみ合いなど）を具体的に見つけ出すこと。
+                2. それを踏まえた今後の短期的な株価予想。
+                
+                【絶対遵守ルール】
+                ・挨拶、免責文（投資は自己責任等）は一切不要。すぐに結論を出力せよ。
+                ・必ず冒頭で【判定: 上昇予測 / 下落予測 / もみ合い】を断言すること。
+                ・買い目線、売り目線の両方を含めるが、ショート（空売り）の推奨は絶対に行わないこと。
+                ・なぜそう判断したのか、チャートの日付や価格の推移を根拠に論理的に解説すること。
+
+                【直近60日間のデータ】
+                {chart_data_str}
+                """
+                with st.spinner("AIがチャートの形状（パターン）を分析中..."):
+                    try:
+                        response = model.generate_content(tech_prompt)
+                        st.success("✅ チャートパターン分析完了")
+                        st.info(response.text)
+                    except Exception as e:
+                        st.error(f"分析エラー: {e}")
+
+        # 過去の変動日リスト
+        st.markdown("---")
+        st.subheader(f"⚠️ 過去の急変動の答え合わせ（±{threshold}%以上）")
 
         if volatile_days.empty:
             st.info("指定した期間・条件で大きく動いた日はありませんでした。左の「検知ライン」を下げてみてください。")
         else:
             for date, row in volatile_days.iterrows():
-                date_str = date.strftime('%Y年%m月%d日')
-                change = row['Change_Pct']
-                close_price = row['Close']
-                
-                col1, col2, col3 = st.columns([1.5, 1, 3])
-                
-                with col1:
-                    st.write(f"**📅 {date_str}**")
-                with col2:
-                    color = "red" if change > 0 else "blue"
-                    st.markdown(f"<span style='color:{color}; font-weight:bold;'>{change:+.2f}%</span> (￥{close_price:,.1f})", unsafe_allow_html=True)
-                with col3:
-                    if st.button(f"🔍 なぜ動いた？（AI過去照合）", key=f"btn_chart_{date_str}"):
-                        if not api_key:
-                            st.error("左のサイドバーにAPIキーを入力してください。")
-                        else:
-                            genai.configure(api_key=api_key)
-                            try:
-                                model = genai.GenerativeModel("gemini-3.1-flash-lite-preview")
-                            except:
-                                model = genai.GenerativeModel("gemini-pro")
-                            
-                            prompt = f"""
-                            あなたは凄腕の投資アナリストです。
-                            銘柄「{target_stock}（{ticker_symbol}）」の株価が、【{date_str}】に前日比 {change:+.2f}% と急変動しました。
-                            あなたの知識ベースから、この日（または前日の引け後）に発表された決算、IR、ニュース、マクロ要因などを特定し、なぜこれほど株価が動いたのかを解説してください。
-
-                            【絶対遵守ルール】
-                            1. 挨拶、前置き、自己責任等の免責文は一切書かず、すぐに事実を出力せよ。
-                            2. 投資に関係ない話は禁止。ショート（空売り）の提案も禁止。
-                            3. 見出しは **【{target_stock} | {date_str}の変動理由】** とすること。
-                            4. その日に出た個別の材料（決算、修正、提携など）を最優先で解説し、該当がない場合はセクターやマクロの動きから理由を論理的に推測せよ。
-                            5. 最後に、この材料が当時 **【ポジティブ / ネガティブ】** どちらに受け取られたのかを断言せよ。
-                            """
-                            
-                            with st.spinner(f"{date_str} の過去ニュースと材料を検索・分析中..."):
-                                try:
-                                    response = model.generate_content(prompt)
-                                    st.success("✅ 過去データの照合完了")
-                                    st.write(response.text)
-                                except Exception as e:
-                                    st.error(f"分析エラー: {e}")
-                st.divider()
-
-    else:
-        st.warning(f"「{target_stock}」の株価データが取得できませんでした。辞書にない銘柄の場合は、直接証券コード（例: 7011）を入力してください。")
+                date_str = date.strftime
