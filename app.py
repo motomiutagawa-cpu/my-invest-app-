@@ -133,11 +133,9 @@ def get_stock_data(ticker, per):
         if df.empty:
             return None
         df['Change_Pct'] = df['Close'].pct_change() * 100
-        # 移動平均線の計算
         df['MA5'] = df['Close'].rolling(window=5).mean()
         df['MA20'] = df['Close'].rolling(window=20).mean()
         df['MA60'] = df['Close'].rolling(window=60).mean()
-        # 出来高のカラーリング（陽線＝緑、陰線＝赤に変更）
         df['Color'] = df.apply(lambda row: '#00C896' if row['Close'] >= row['Open'] else '#F92855', axis=1)
         return df
     except:
@@ -297,7 +295,9 @@ elif app_mode == "📈 急変動チャートAI照合":
     st.sidebar.markdown("### ⚙️ チャート検知設定")
     target_stock = st.sidebar.text_input("銘柄名・コードを入力", value="三菱重工", help="例: 三菱重工, 7011, エヌビディア, NVDA")
     period = st.sidebar.selectbox("表示期間", ["3mo", "6mo", "1y", "2y"], index=1)
-    threshold = st.sidebar.slider("急変動とみなすライン（±％）", min_value=1.0, max_value=20.0, value=5.0, step=0.5)
+    
+    # 【変更箇所】デフォルトの検知ラインを 5.0% から 2.0% に下げて、リストが出やすくしました！
+    threshold = st.sidebar.slider("急変動とみなすライン（±％）", min_value=1.0, max_value=20.0, value=2.0, step=0.5)
 
     raw_target = target_stock.strip().lower()
     ticker_symbol = STOCK_NAME_MAP.get(raw_target, target_stock.strip())
@@ -310,10 +310,8 @@ elif app_mode == "📈 急変動チャートAI照合":
     df = get_stock_data(ticker_symbol, period)
 
     if df is not None:
-        # moomoo風サブプロット (上: ローソク+MA, 下: 出来高)
         fig = make_subplots(rows=2, cols=1, shared_xaxes=True, row_heights=[0.75, 0.25], vertical_spacing=0.03)
 
-        # 1. ローソク足 (陽線: 緑 #00C896, 陰線: 赤 #F92855)
         fig.add_trace(go.Candlestick(
             x=df.index, open=df['Open'], high=df['High'], low=df['Low'], close=df['Close'],
             increasing_line_color='#00C896', increasing_fillcolor='#00C896',
@@ -321,19 +319,16 @@ elif app_mode == "📈 急変動チャートAI照合":
             name="価格"
         ), row=1, col=1)
 
-        # 2. 移動平均線 (MA5, MA20, MA60)
         fig.add_trace(go.Scatter(x=df.index, y=df['MA5'], line=dict(color='#F2B33D', width=1.2), name='MA5'), row=1, col=1)
         fig.add_trace(go.Scatter(x=df.index, y=df['MA20'], line=dict(color='#8A5EE6', width=1.2), name='MA20'), row=1, col=1)
         fig.add_trace(go.Scatter(x=df.index, y=df['MA60'], line=dict(color='#3283F6', width=1.2), name='MA60'), row=1, col=1)
 
-        # 3. 出来高バー
         fig.add_trace(go.Bar(
             x=df.index, y=df['Volume'], 
             marker_color=df['Color'], 
             name="出来高"
         ), row=2, col=1)
 
-        # 急変動サインのプロット
         volatile_days = df[df['Change_Pct'].abs() >= threshold]
         if not volatile_days.empty:
             fig.add_trace(go.Scatter(
@@ -347,7 +342,6 @@ elif app_mode == "📈 急変動チャートAI照合":
                 name="急変動"
             ), row=1, col=1)
 
-        # moomoo風 ダークテーマ ＆ レイアウト設定
         fig.update_layout(
             template='plotly_dark',
             title=f"【{target_stock} ({ticker_symbol})】 日足チャート",
@@ -355,18 +349,16 @@ elif app_mode == "📈 急変動チャートAI照合":
             height=650,
             margin=dict(l=10, r=10, t=50, b=10),
             showlegend=False,
-            hovermode='x unified', # 十字カーソルで情報一括表示
+            hovermode='x unified',
             plot_bgcolor='#131722',
             paper_bgcolor='#131722'
         )
         
-        # グリッド線の微調整
         fig.update_xaxes(showgrid=True, gridcolor='#2B2B2B', zeroline=False)
         fig.update_yaxes(showgrid=True, gridcolor='#2B2B2B', zeroline=False)
 
         st.plotly_chart(fig, use_container_width=True)
 
-        # --- テクニカルAI予想 ---
         st.markdown("---")
         st.subheader("🔮 今のチャートから未来を予想（テクニカルAI分析）")
         if st.button("AIにチャートパターンを分析させる", type="primary"):
@@ -407,7 +399,6 @@ elif app_mode == "📈 急変動チャートAI照合":
                     except Exception as e:
                         st.error(f"分析エラー: {e}")
 
-        # 過去の変動日リスト
         st.markdown("---")
         st.subheader(f"⚠️ 過去の急変動の答え合わせ（±{threshold}%以上）")
 
@@ -415,4 +406,12 @@ elif app_mode == "📈 急変動チャートAI照合":
             st.info("指定した期間・条件で大きく動いた日はありませんでした。左の「検知ライン」を下げてみてください。")
         else:
             for date, row in volatile_days.iterrows():
-                date_str = date.strftime
+                date_str = date.strftime('%Y年%m月%d日')
+                change = row['Change_Pct']
+                close_price = row['Close']
+                
+                col1, col2, col3 = st.columns([1.5, 1, 3])
+                
+                with col1:
+                    st.write(f"**📅 {date_str}**")
+             
