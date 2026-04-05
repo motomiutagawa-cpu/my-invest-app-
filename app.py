@@ -405,5 +405,52 @@ elif app_mode == "📈 急変動チャートAI照合":
         if volatile_days.empty:
             st.info("指定した期間・条件で大きく動いた日はありませんでした。左の「検知ライン」を下げてみてください。")
         else:
-            # HTMLバグを回避するため、完全に標準のマークダウンと絵文字だけで表示します
-            for da
+            for date, row in volatile_days.iterrows():
+                date_str = date.strftime('%Y年%m月%d日')
+                change = row['Change_Pct']
+                close_price = row['Close']
+                icon = "🟢" if change > 0 else "🔴"
+                sign = "+" if change > 0 else ""
+                
+                # HTMLを完全に排除して、標準マークダウンだけで記述
+                header_text = "### " + icon + " " + date_str + " ┃ " + sign + str(round(change, 2)) + "%"
+                st.markdown(header_text)
+                st.write("終値: ￥" + "{:,.1f}".format(close_price))
+                
+                btn_title = "🔍 この日のニュースと材料をAIで照合する"
+                if st.button(btn_title, key="btn_chart_" + date_str, use_container_width=True):
+                    if not api_key:
+                        st.error("左のサイドバーにAPIキーを入力してください。")
+                    else:
+                        genai.configure(api_key=api_key)
+                        try:
+                            model = genai.GenerativeModel("gemini-3.1-flash-lite-preview")
+                        except:
+                            model = genai.GenerativeModel("gemini-pro")
+                        
+                        reason_prompt_lines = [
+                            "あなたは凄腕の投資アナリストです。",
+                            "銘柄「" + target_stock + "（" + ticker_symbol + "）」の株価が、【" + date_str + "】に前日比 " + sign + str(round(change, 2)) + "% と急変動しました。",
+                            "あなたの知識ベースから、この日（または前日の引け後）に発表された決算、IR、ニュース、マクロ要因などを特定し、なぜこれほど株価が動いたのかを解説してください。",
+                            "【絶対遵守ルール】",
+                            "1. 挨拶、前置き、自己責任等の免責文は一切書かず、すぐに事実を出力せよ。",
+                            "2. 投資に関係ない話は禁止。ショート（空売り）の提案も禁止。",
+                            "3. 見出しは **【" + target_stock + " | " + date_str + "の変動理由】** とすること。",
+                            "4. その日に出た個別の材料（決算、修正、提携など）を最優先で解説し、該当がない場合はセクターやマクロの動きから理由を論理的に推測せよ。",
+                            "5. 最後に、この材料が当時 **【ポジティブ / ネガティブ】** どちらに受け取られたのかを断言せよ。"
+                        ]
+                        prompt = "\n".join(reason_prompt_lines)
+                        
+                        with st.spinner(date_str + " の過去ニュースと材料を検索・分析中..."):
+                            try:
+                                response = model.generate_content(prompt)
+                                st.success("✅ 過去データの照合完了")
+                                st.write(response.text)
+                            except Exception as e:
+                                st.error("分析エラー: " + str(e))
+                st.divider()
+
+    else:
+        st.warning("「" + target_stock + "」の株価データが取得できませんでした。辞書にない銘柄の場合は、直接証券コード（例: 7011）を入力してください。")
+
+# --- END OF FILE ---
