@@ -405,14 +405,16 @@ elif app_mode == "📈 急変動チャートAI照合":
         if volatile_days.empty:
             st.info("指定した期間・条件で大きく動いた日はありませんでした。左の「検知ライン」を下げてみてください。")
         else:
-            for date, row in volatile_days.iterrows():
+            # 【新機能】日付が新しい順（降順）に並び替えてループを回す
+            sorted_volatile_days = volatile_days.sort_index(ascending=False)
+            
+            for date, row in sorted_volatile_days.iterrows():
                 date_str = date.strftime('%Y年%m月%d日')
                 change = row['Change_Pct']
                 close_price = row['Close']
                 icon = "🟢" if change > 0 else "🔴"
                 sign = "+" if change > 0 else ""
                 
-                # HTMLを完全に排除して、標準マークダウンだけで記述
                 header_text = "### " + icon + " " + date_str + " ┃ " + sign + str(round(change, 2)) + "%"
                 st.markdown(header_text)
                 st.write("終値: ￥" + "{:,.1f}".format(close_price))
