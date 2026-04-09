@@ -286,7 +286,6 @@ if app_mode == "📰 ニュース・相場分析":
                                 st.error(f"チャットエラー: {e}")
                         else: 
                             st.error("分析を開始してください。")
-
 # ==========================================
 # モード2: 急変動チャート分析
 # ==========================================
@@ -295,6 +294,7 @@ elif app_mode == "📈 急変動チャートAI照合":
     st.info("💡 **ヒント:** チャート上の「▼マーク」の急変理由は、画面を下へスクロールした先のリストから確認できます！")
 
     st.sidebar.markdown("### ⚙️ チャート検知設定")
+    market_type = st.sidebar.radio("市場を選択", ["日本株", "米国株", "FX"])
     target_stock = st.sidebar.text_input("銘柄名・コードを入力", value="三菱重工", help="例: 三菱重工, 7011, エヌビディア, NVDA")
     period = st.sidebar.selectbox("表示期間", ["3mo", "6mo", "1y", "2y"], index=1)
     
@@ -303,10 +303,14 @@ elif app_mode == "📈 急変動チャートAI照合":
     raw_target = target_stock.strip().lower()
     ticker_symbol = STOCK_NAME_MAP.get(raw_target, target_stock.strip())
 
-    if ticker_symbol.isdigit() and len(ticker_symbol) == 4:
-        ticker_symbol = f"{ticker_symbol}.T"
-    elif len(ticker_symbol) == 4 and ticker_symbol[:-1].isdigit() and ticker_symbol[-1].isalpha():
-        ticker_symbol = f"{ticker_symbol}.T"
+    if market_type == "日本株":
+        if ticker_symbol.isdigit() and len(ticker_symbol) == 4:
+            ticker_symbol = f"{ticker_symbol}.T"
+        elif len(ticker_symbol) == 4 and ticker_symbol[:-1].isdigit() and ticker_symbol[-1].isalpha():
+            ticker_symbol = f"{ticker_symbol}.T"
+    elif market_type == "FX":
+        ticker_symbol = ticker_symbol.replace("/", "").replace(" ", "")
+        if not ticker_symbol.endswith("=X"): ticker_symbol += "=X"
 
     df = get_stock_data(ticker_symbol, period)
 
