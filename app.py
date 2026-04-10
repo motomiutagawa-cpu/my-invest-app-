@@ -81,8 +81,23 @@ async def generate_voice(text):
         if chunk["type"] == "audio": audio_data += chunk["data"]
     return audio_data
 
-def get_all_news(hours):
-    rss_urls = ["https://news.yahoo.co.jp/rss/topics/business.xml", "https://news.yahoo.co.jp/rss/topics/world.xml", "https://jp.reuters.com/rss/businessNews", "https://jp.reuters.com/rss/worldNews", "https://prtimes.jp/index.rdf"]
+def get_all_news(hours, market):
+    # 市場に応じてニュースソースを切り替える
+    if market == "米国株":
+        rss_urls = [
+            "https://finance.yahoo.com/news/rssindex",
+            "https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=10000664",
+            "https://jp.reuters.com/rss/worldNews"
+        ]
+    else:
+        rss_urls = [
+            "https://news.yahoo.co.jp/rss/topics/business.xml", 
+            "https://news.yahoo.co.jp/rss/topics/world.xml", 
+            "https://jp.reuters.com/rss/businessNews", 
+            "https://jp.reuters.com/rss/worldNews", 
+            "https://prtimes.jp/index.rdf"
+        ]
+        
     news_list, seen_links = [], set()
     now = datetime.now(timezone.utc)
     time_threshold = now - timedelta(hours=hours)
@@ -98,8 +113,20 @@ def get_all_news(hours):
                 
                 if "福島" in entry.title or "カメラ" in entry.title:
                     continue
+                
+                # 情報元が分かりやすいように分類
+                if "yahoo.co.jp" in url:
+                    source_name = "Yahoo(JP)"
+                elif "yahoo.com" in url:
+                    source_name = "Yahoo(US)"
+                elif "cnbc" in url:
+                    source_name = "CNBC(US)"
+                elif "reuters" in url:
+                    source_name = "ロイター"
+                else:
+                    source_name = "PR TIMES"
                     
-                news_list.append({"title": entry.title, "summary": entry.get("summary", ""), "link": entry.link, "source": "Yahoo" if "yahoo" in url else "ロイター" if "reuters" in url else "PR TIMES", "time": pub_time.astimezone(timezone(timedelta(hours=9))).strftime('%m/%d %H:%M') if pub_struct else "--:--"})
+                news_list.append({"title": entry.title, "summary": entry.get("summary", ""), "link": entry.link, "source": source_name, "time": pub_time.astimezone(timezone(timedelta(hours=9))).strftime('%m/%d %H:%M') if pub_struct else "--:--"})
                 seen_links.add(entry.link)
         except: continue
     return news_list
@@ -191,7 +218,8 @@ if app_mode == "📰 ニュース・相場分析":
             
             with st.spinner("情報を戦略的に精査中..."):
                 try:
-                    news_data = get_all_news(hours_range)
+                    # ここでmarket_choiceを渡して、米国株かどうか判定させます
+                    news_data = get_all_news(hours_range, market_choice)
                     st.session_state.fetched_news = news_data
                     st.session_state.individual_summaries = {}
                     
@@ -214,7 +242,7 @@ if app_mode == "📰 ニュース・相場分析":
                         "【絶対遵守ルール】",
                         "1. 挨拶、前置き、自己責任などの免責文は一切書かず、すぐに結果を出力せよ。",
                         "2. " + policy,
-                        "3. 【ハイブリッド出力】全体に波波及するマクロニュースはセクター（【セクター：〇〇】）でまとめ、個別に大きな材料がある銘柄は個別に見出しを立てて詳しく分析せよ。",
+                        "3. 【ハイブリッド出力】全体に波及するマクロニュースはセクター（【セクター：〇〇】）でまとめ、個別に大きな材料がある銘柄は個別に見出しを立てて詳しく分析せよ。",
                         "4. 【見出しとデータ】見出しは必ず **【銘柄名(コード) | 現在価格 | 騰落率】** とし、価格データを正確に記載せよ。",
                         "5. 【判定とインパクト】各分析の冒頭に必ず **【判定：ポジティブ/ネガティブ/中立】** と **【予想インパクト：+〇%上昇予測 / -〇%下落予測】** を断言せよ。",
                         "6. 【経済指標・連想・テクニカル】直接のニュースがない場合でも、為替や金利、経済指標（CPI、雇用統計、要人発言など）、同業種の動向から「間接的な影響」と「テクニカル予測」を必ず考察せよ。FX・為替の分析時は特に経済指標を最重視すること。",
@@ -249,7 +277,8 @@ if app_mode == "📰 ニュース・相場分析":
             st.subheader("📊 ニュースフィード")
             with st.container(height=800):
                 for i, n in enumerate(st.session_state.fetched_news):
-                    with st.expander(f"No.{i}: 📌 [{n['time']}] {n['title']}"):
+                    # どこから持ってきたニュースか分かりやすいようにソース名を追加しました
+                    with st.expander(f"No.{i}: 📌 [{n['time']}] {n['source']} - {n['title']}"):
                         st.write(n['summary'])
                         if st.button(f"✨ AI要約 (No.{i})", key=f"btn_news_{i}"):
                             with st.spinner("要約中..."):
