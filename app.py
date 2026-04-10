@@ -302,174 +302,96 @@ if app_mode == "📰 ニュース・相場分析":
                                 st.error(f"チャットエラー: {e}")
                         else: 
                             st.error("分析を開始してください。")
-# ==========================================
+
+            
+                    # ==========================================
 # モード2: 急変動チャート分析
 # ==========================================
 elif app_mode == "📈 急変動チャートAI照合":
+    import requests  # 銘柄名自動検索用に追加
+
     st.title("📈 急変動チャート ＆ AIテクニカル予想")
-    st.info("💡 **ヒント:** チャート上の「▼マーク」の急変理由は、画面を下へスクロールした先のリストから確認できます！")
+    st.info("💡 ヒント: チャート上の「▼マーク」の急変理由は下のリストから確認できます")
 
     st.sidebar.markdown("### ⚙️ チャート検知設定")
-    target_stock = st.sidebar.text_input("銘柄名・コードを入力", value="三菱重工", help="例: 三菱重工, 7011, エヌビディア, NVDA")
+    target_stock = st.sidebar.text_input("銘柄名・コードを入力（例: トヨタ, エヌビディア, 7011）", value="三菱重工")
     period = st.sidebar.selectbox("表示期間", ["3mo", "6mo", "1y", "2y"], index=1)
-    
-    # ここから下がコピー時に途切れていたため、チャート描画部分を補完しています
-    threshold = st.sidebar.slider("急変動とみなすライン（±％）", min_value=1.0, max_value=20.0, value=5.0, step=0.5)
+    threshold = st.sidebar.slider("急変動ライン（±％）", min_value=1.0, max_value=20.0, value=5.0, step=0.5)
 
-    raw_target = target_stock.strip().lower()
-    ticker_symbol = STOCK_NAME_MAP.get(raw_target, target_stock.strip())
+    # --- 銘柄名を自動で証券コードに変換する処理 ---
+    raw_target = target_stock.strip()
+    raw_target_lower = raw_target.lower()
+    ticker_symbol = raw_target
 
-    if ticker_symbol.isdigit() and len(ticker_symbol) == 4:
-        ticker_symbol = f"{ticker_symbol}.T"
-    elif len(ticker_symbol) == 4 and ticker_symbol[:-1].isdigit() and ticker_symbol[-1].isalpha():
-        ticker_symbol = f"{ticker_symbol}.T"
+    if raw_target_lower in STOCK_NAME_MAP:
+        ticker_symbol = STOCK_NAME_MAP[raw_target_lower]
+        if ticker_symbol.isdigit() and len(ticker_symbol) == 4:
+            ticker_symbol = f"{ticker_symbol}.T"
+    elif raw_target.isdigit() and len(raw_target) == 4:
+        ticker_symbol = f"{raw_target}.T"
+    else:
+        # 辞書になければYahoo Financeの検索APIで自動的にコードを見つける
+        try:
+            url = f"https://query2.finance.yahoo.com/v1/finance/search?q={raw_target}"
+            res = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=3).json()
+            if res.get('quotes') and len(res['quotes']) > 0:
+                ticker_symbol = res['quotes'][0]['symbol']
+        except:
+            pass
+    # ---------------------------------------------
 
     df = get_stock_data(ticker_symbol, period)
 
     if df is not None:
         fig = make_subplots(rows=2, cols=1, shared_xaxes=True, row_heights=[0.75, 0.25], vertical_spacing=0.03)
-
-        fig.add_trace(go.Candlestick(
-            x=df.index, open=df['Open'], high=df['High'], low=df['Low'], close=df['Close'],
-            increasing_line_color='#00C896', increasing_fillcolor='#00C896',
-            decreasing_line_color='#F92855', decreasing_fillcolor='#F92855',
-            name="価格"
-        ), row=1, col=1)
-
+        fig.add_trace(go.Candlestick(x=df.index, open=df['Open'], high=df['High'], low=df['Low'], close=df['Close'], increasing_line_color='#00C896', decreasing_line_color='#F92855', name="価格"), row=1, col=1)
         fig.add_trace(go.Scatter(x=df.index, y=df['MA5'], line=dict(color='#F2B33D', width=1.2), name='MA5'), row=1, col=1)
         fig.add_trace(go.Scatter(x=df.index, y=df['MA20'], line=dict(color='#8A5EE6', width=1.2), name='MA20'), row=1, col=1)
         fig.add_trace(go.Scatter(x=df.index, y=df['MA60'], line=dict(color='#3283F6', width=1.2), name='MA60'), row=1, col=1)
-
-        fig.add_trace(go.Bar(
-            x=df.index, y=df['Volume'], 
-            marker_color=df['Color'], 
-            name="出来高"
-        ), row=2, col=1)
+        fig.add_trace(go.Bar(x=df.index, y=df['Volume'], marker_color=df['Color'], name="出来高"), row=2, col=1)
 
         volatile_days = df[df['Change_Pct'].abs() >= threshold]
         if not volatile_days.empty:
-            fig.add_trace(go.Scatter(
-                x=volatile_days.index,
-                y=volatile_days['High'] * 1.02,
-                mode='markers+text',
-                marker=dict(symbol='triangle-down', size=12, color='white'),
-                text=[f"{val:+.1f}%" for val in volatile_days['Change_Pct']],
-                textfont=dict(color="white"),
-                textposition="top center",
-                name="急変動"
-            ), row=1, col=1)
+            fig.add_trace(go.Scatter(x=volatile_days.index, y=volatile_days['High'] * 1.02, mode='markers+text', marker=dict(symbol='triangle-down', size=12, color='white'), text=[f"{val:+.1f}%" for val in volatile_days['Change_Pct']], textfont=dict(color="white"), textposition="top center", name="急変動"), row=1, col=1)
 
-        fig.update_layout(
-            template='plotly_dark',
-            title=f"【{target_stock} ({ticker_symbol})】 日足チャート",
-            xaxis_rangeslider_visible=False,
-            height=500,
-            margin=dict(l=10, r=10, t=50, b=10),
-            showlegend=False,
-            hovermode='x unified',
-            plot_bgcolor='#131722',
-            paper_bgcolor='#131722'
-        )
-        
-        fig.update_xaxes(showgrid=True, gridcolor='#2B2B2B', zeroline=False)
-        fig.update_yaxes(showgrid=True, gridcolor='#2B2B2B', zeroline=False)
-
+        fig.update_layout(template='plotly_dark', title=f"【{target_stock} ({ticker_symbol})】 日足チャート", xaxis_rangeslider_visible=False, height=500, plot_bgcolor='#131722', paper_bgcolor='#131722')
         st.plotly_chart(fig, use_container_width=True)
 
-        # ここから下がもとみさんのオリジナルのテクニカル分析コードです
         st.markdown("---")
         st.subheader("🔮 今のチャートから未来を予想（テクニカルAI分析）")
         if st.button("AIにチャートパターンを分析させる", type="primary"):
-            if not api_key:
-                st.error("左のサイドバーにAPIキーを入力してください。")
+            if not api_key: st.error("左のサイドバーにAPIキーを入力してください。")
             else:
-                recent_df = df.tail(60)[['Open', 'High', 'Low', 'Close', 'Volume']]
-                chart_data_str = recent_df.to_string()
-                
+                chart_str = df.tail(60)[['Open', 'High', 'Low', 'Close', 'Volume']].to_string()
                 genai.configure(api_key=api_key)
-                try:
-                    model = genai.GenerativeModel("gemini-3.1-flash-lite-preview")
-                except:
-                    model = genai.GenerativeModel("gemini-pro")
-                
-                tech_prompt_lines = [
-                    "あなたはプロのテクニカルアナリストです。",
-                    "以下のデータは、銘柄「" + target_stock + "」の直近60日間の四本値と出来高です。",
-                    "このデータから、以下を分析してください。",
-                    "1. 現在形成されている「チャートパターン」（ダブルボトム、ダブルトップ、三尊、トレンドラインの支持・抵抗、もみ合いなど）を具体的に見つけ出すこと。",
-                    "2. それを踏まえた今後の短期的な株価予想。",
-                    "【絶対遵守ルール】",
-                    "・挨拶、免責文（投資は自己責任等）は一切不要。すぐに結論を出力せよ。",
-                    "・必ず冒頭で【判定: 上昇予測 / 下落予測 / もみ合い】を断言すること。",
-                    "・買い目線、売り目線の両方を含めるが、ショート（空売り）の推奨は絶対に行わないこと。",
-                    "・なぜそう判断したのか、チャートの日付や価格の推移を根拠に論理的に解説すること。",
-                    "【直近60日間のデータ】",
-                    chart_data_str
-                ]
-                tech_prompt = "\n".join(tech_prompt_lines)
-                
-                with st.spinner("AIがチャートの形状（パターン）を分析中..."):
-                    try:
-                        response = model.generate_content(tech_prompt)
-                        st.success("✅ チャートパターン分析完了")
-                        st.info(response.text)
-                    except Exception as e:
-                        st.error(f"分析エラー: {e}")
+                try: model = genai.GenerativeModel("gemini-3.1-flash-lite-preview")
+                except: model = genai.GenerativeModel("gemini-pro")
+                prompt = f"あなたはプロのテクニカルアナリストです。以下のデータは銘柄「{target_stock}」の直近60日間の四本値と出来高です。1. 現在形成されている「チャートパターン」を見つけること。2. それを踏まえた今後の短期的な株価予想。必ず冒頭で【判定: 上昇予測 / 下落予測 / もみ合い】を断言すること。ショートの推奨は絶対に行わないこと。\n{chart_str}"
+                with st.spinner("AIがチャートの形状を分析中..."):
+                    try: st.info(model.generate_content(prompt).text)
+                    except Exception as e: st.error(f"分析エラー: {e}")
 
         st.markdown("---")
-        st.subheader("⚠️ 過去の急変動の答え合わせ（±" + str(threshold) + "%以上）")
-
+        st.subheader(f"⚠️ 過去の急変動の答え合わせ（±{threshold}%以上）")
         if volatile_days.empty:
-            st.info("指定した期間・条件で大きく動いた日はありませんでした。左の「検知ライン」を下げてみてください。")
+            st.info("大きく動いた日はありませんでした。")
         else:
-            # 日付が新しい順（降順）に並び替えてループを回す
-            sorted_volatile_days = volatile_days.sort_index(ascending=False)
-            
-            for date, row in sorted_volatile_days.iterrows():
-                date_str = date.strftime('%Y年%m月%d日')
-                change = row['Change_Pct']
-                close_price = row['Close']
-                icon = "🟢" if change > 0 else "🔴"
-                sign = "+" if change > 0 else ""
-                
-                header_text = "### " + icon + " " + date_str + " ┃ " + sign + str(round(change, 2)) + "%"
-                st.markdown(header_text)
-                st.write("終値: ￥" + "{:,.1f}".format(close_price))
-                
-                btn_title = "🔍 この日のニュースと材料をAIで照合する"
-                if st.button(btn_title, key="btn_chart_" + date_str, use_container_width=True):
-                    if not api_key:
-                        st.error("左のサイドバーにAPIキーを入力してください。")
+            for date, row in volatile_days.sort_index(ascending=False).iterrows():
+                d_str = date.strftime('%Y年%m月%d日')
+                chg = row['Change_Pct']
+                icon, sign = ("🟢", "+") if chg > 0 else ("🔴", "")
+                st.markdown(f"### {icon} {d_str} ┃ {sign}{chg:.2f}%")
+                st.write(f"終値: ￥{row['Close']:,.1f}")
+                if st.button(f"🔍 この日のニュースと材料をAIで照合する", key=f"btn_{d_str}", use_container_width=True):
+                    if not api_key: st.error("APIキーを入力してください。")
                     else:
                         genai.configure(api_key=api_key)
-                        try:
-                            model = genai.GenerativeModel("gemini-3.1-flash-lite-preview")
-                        except:
-                            model = genai.GenerativeModel("gemini-pro")
-                        
-                        reason_prompt_lines = [
-                            "あなたは凄腕の投資アナリストです。",
-                            "銘柄「" + target_stock + "（" + ticker_symbol + "）」の株価が、【" + date_str + "】に前日比 " + sign + str(round(change, 2)) + "% と急変動しました。",
-                            "あなたの知識ベースから、この日（または前日の引け後）に発表された決算、IR、ニュース、マクロ要因などを特定し、なぜこれほど株価が動いたのかを解説してください。",
-                            "【絶対遵守ルール】",
-                            "1. 挨拶、前置き、自己責任等の免責文は一切書かず、すぐに事実を出力せよ。",
-                            "2. 投資に関係ない話は禁止。ショート（空売り）の提案も禁止。",
-                            "3. 見出しは **【" + target_stock + " | " + date_str + "の変動理由】** とすること。",
-                            "4. その日に出た個別の材料（決算、修正、提携など）を最優先で解説し、該当がない場合はセクターやマクロの動きから理由を論理的に推測せよ。",
-                            "5. 最後に、この材料が当時 **【ポジティブ / ネガティブ】** どちらに受け取られたのかを断言せよ。"
-                        ]
-                        prompt = "\n".join(reason_prompt_lines)
-                        
-                        with st.spinner(date_str + " の過去ニュースと材料を検索・分析中..."):
-                            try:
-                                response = model.generate_content(prompt)
-                                st.success("✅ 過去データの照合完了")
-                                st.write(response.text)
-                            except Exception as e:
-                                st.error("分析エラー: " + str(e))
+                        try: model = genai.GenerativeModel("gemini-3.1-flash-lite-preview")
+                        except: model = genai.GenerativeModel("gemini-pro")
+                        prompt = f"銘柄「{target_stock}」が【{d_str}】に前日比 {sign}{chg:.2f}% と急変動しました。この日に発表された決算、IR、ニュースなどを特定し、なぜ動いたのか解説してください。挨拶不要、ショート提案禁止。材料が【ポジティブ / ネガティブ】どちらか断言してください。"
+                        with st.spinner(f"{d_str} の過去ニュースを検索・分析中..."):
+                            try: st.write(model.generate_content(prompt).text)
+                            except Exception as e: st.error(f"分析エラー: {e}")
                 st.divider()
-
     else:
-        st.warning("「" + target_stock + "」の株価データが取得できませんでした。辞書にない銘柄の場合は、直接証券コード（例: 7011）を入力してください。")
-
-# --- END OF FILE ---
+        st.warning(f"「{target_stock}」のデータが取得できませんでした。銘柄名を変えてみてください。")
