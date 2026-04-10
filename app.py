@@ -87,7 +87,10 @@ def get_all_news(hours, market):
         rss_urls = [
             "https://finance.yahoo.com/news/rssindex",
             "https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=10000664",
-            "https://jp.reuters.com/rss/worldNews"
+            "https://jp.reuters.com/rss/worldNews",
+            "https://feeds.a.dj.com/rss/WSJcomUSBusiness.xml", # WSJ（ウォール・ストリート・ジャーナル）
+            "http://feeds.marketwatch.com/marketwatch/topstories/", # MarketWatch
+            "http://rss.cnn.com/rss/money_latest.rss" # CNN Business
         ]
     else:
         rss_urls = [
@@ -114,13 +117,19 @@ def get_all_news(hours, market):
                 if "福島" in entry.title or "カメラ" in entry.title:
                     continue
                 
-                # 情報元が分かりやすいように分類
+                # 情報元が分かりやすいように分類を追加
                 if "yahoo.co.jp" in url:
                     source_name = "Yahoo(JP)"
                 elif "yahoo.com" in url:
                     source_name = "Yahoo(US)"
                 elif "cnbc" in url:
                     source_name = "CNBC(US)"
+                elif "dj.com" in url or "wsj" in url:
+                    source_name = "WSJ"
+                elif "marketwatch" in url:
+                    source_name = "MarketWatch"
+                elif "cnn" in url:
+                    source_name = "CNN"
                 elif "reuters" in url:
                     source_name = "ロイター"
                 else:
@@ -130,6 +139,7 @@ def get_all_news(hours, market):
                 seen_links.add(entry.link)
         except: continue
     return news_list
+
 
 def analyze_single_article(title, summary, api_key):
     genai.configure(api_key=api_key)
