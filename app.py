@@ -12,10 +12,10 @@ from plotly.subplots import make_subplots
 import pandas as pd
 import requests
 
-# 画面設定 (必ず一番上)
+# 画面設定
 st.set_page_config(page_title="AI投資アナリスト・もとみさん専用", layout="wide")
 
-# --- グローバル設定・関数 ---
+# --- 銘柄リスト ---
 CORE_WATCHLIST = {
     "日本株": "三菱重工, 川崎重工, IHI, ソニーg, ソニーfg, トヨタ, 任天堂, アストロスケール, 安川電機, 住友電工, 古河電気工業, フジクラ, 東レ, 本田技研, 日立製作所, 東北電力, シマノ, acsl, 日東電工, 三菱UFJ, サンリオ, KDDI, 川崎汽船, 商船三井, 日本郵船, 三菱hcキャピタル, 三菱ケミカル, 伊藤忠, 日東紡績, 三菱マテリアル, 小松製作所, 三菱商事, オリックス, 楽天グループ, ディー・エヌ・エー, 三井不動産, 三井物産, igポート, Liberaware, メタプラネット, アドバンテスト, 東京エレクトロン, キーエンス, ファナック, 村田製作所, レーザーテック, イビデン, ディスコ, 信越化学工業, 第一生命, ヤマハ, 住友金属鉱山, エニーカラー, ソフトバンク, ソフトバンクg, キオクシア, 三井住友fg, みずほfg, 東邦銀行, アルコニックス, レンゴー, 楽天銀行, 細谷火工, QPSホールディングス, ブルーイノベーション, 名村造船所, カバー, inpex, ispace, スカパーjsat",
     "米国株": "AAPL, NVDA, GOOGL, AMZN, TSLA, MSFT, META, PLTR, RKLB, AVGO, BRK-B",
@@ -25,56 +25,37 @@ CORE_WATCHLIST = {
 
 STOCK_NAME_MAP = {
     "三菱重工": "7011", "川崎重工": "7012", "ihi": "7013", "ソニーg": "6758", "ソニーfg": "5814",
-    "トヨタ": "7203", "トヨタ自動車": "7203", "任天堂": "7974", "アストロスケール": "186A", 
-    "安川電機": "6506", "住友電工": "5802", "古河電気工業": "5801", "古河電工": "5801", "フジクラ": "5803", 
-    "東レ": "3402", "本田技研": "7267", "ホンダ": "7267", "日立製作所": "6501", "日立": "6501", 
-    "東北電力": "9506", "シマノ": "7309", "acsl": "6232", "日東電工": "6988", "三菱ufj": "8306", 
-    "サンリオ": "8136", "kddi": "9433", "川崎汽船": "9107", "商船三井": "9104", "日本郵船": "9101",
-    "三菱hcキャピタル": "8593", "三菱ケミカル": "4188", "伊藤忠": "8001", "伊藤忠商事": "8001", 
-    "日東紡績": "3110", "日東紡": "3110", "三菱マテリアル": "5711", "小松製作所": "6301", "コマツ": "6301",
-    "三菱商事": "8058", "オリックス": "8591", "楽天グループ": "4755", "楽天": "4755", 
-    "ディー・エヌ・エー": "2432", "dena": "2432", "三井不動産": "8801", "三井物産": "8031", 
-    "igポート": "3791", "liberaware": "218A", "メタプラネット": "3350", "アドバンテスト": "6857", 
-    "東京エレクトロン": "8035", "キーエンス": "6861", "ファナック": "6954", "村田製作所": "6981", 
-    "レーザーテック": "6920", "イビデン": "4062", "ディスコ": "6146", "信越化学工業": "4063", "信越化学": "4063",
-    "第一生命": "8750", "ヤマハ": "7951", "住友金属鉱山": "5713", "エニーカラー": "5032", "anycolor": "5032",
-    "ソフトバンク": "9434", "ソフトバンクg": "9984", "三井住友fg": "8316", "みずほfg": "8411", 
-    "東邦銀行": "8346", "アルコニックス": "3036", "レンゴー": "3941", "楽天銀行": "5838", 
-    "細谷火工": "4274", "qpsホールディングス": "5595", "qps": "5595", "ブルーイノベーション": "5597", 
-    "名村造船所": "7014", "カバー": "5253", "cover": "5253", "inpex": "1605", "ispace": "9348", 
-    "スカパーjsat": "9412", "スカパー": "9412",
-    "アップル": "AAPL", "エヌビディア": "NVDA", "グーグル": "GOOGL", "アマゾン": "AMZN", 
-    "テスラ": "TSLA", "マイクロソフト": "MSFT", "メタ": "META", "パランティア": "PLTR", 
-    "ロケットラボ": "RKLB", "ブロードコム": "AVGO", "バークシャー": "BRK-B"
+    "トヨタ": "7203", "任天堂": "7974", "アストロスケール": "186A", "安川電機": "6506",
+    "住友電工": "5802", "古河電気工業": "5801", "フジクラ": "5803", "東レ": "3402",
+    "本田技研": "7267", "日立製作所": "6501", "東北電力": "9506", "シマノ": "7309",
+    "三菱ufj": "8306", "サンリオ": "8136", "kddi": "9433", "川崎汽船": "9107",
+    "商船三井": "9104", "日本郵船": "9101", "三菱商事": "8058", "アドバンテスト": "6857",
+    "東京エレクトロン": "8035", "キーエンス": "6861", "レーザーテック": "6920",
+    "エヌビディア": "NVDA", "アップル": "AAPL", "テスラ": "TSLA"
 }
 
+# --- 関数群 ---
 def get_price_info(stock_str, market):
     items = [s.strip() for s in stock_str.replace("、", ",").split(",") if s.strip()]
     price_data = ""
     for item in items:
         raw_item = item.lower()
-        ticker_symbol = STOCK_NAME_MAP.get(raw_item, item)
-        if "/" in ticker_symbol or market == "FX・為替":
-            ticker_symbol = ticker_symbol.replace("/", "").replace(" ", "")
-            if not ticker_symbol.endswith("=X"): ticker_symbol += "=X"
-        elif market == "日本株" and len(ticker_symbol) == 4 and ticker_symbol.isdigit():
-            ticker_symbol = f"{ticker_symbol}.T"
-        elif market == "日本株" and len(ticker_symbol) == 4 and ticker_symbol[:-1].isdigit() and ticker_symbol[-1].isalpha():
-            ticker_symbol = f"{ticker_symbol}.T"
+        ticker = STOCK_NAME_MAP.get(raw_item, item)
+        if market == "日本株" and ticker.isdigit(): ticker = f"{ticker}.T"
+        elif market == "FX・為替":
+            ticker = ticker.replace("/", "") + "=X"
         try:
-            tk = yf.Ticker(ticker_symbol)
-            df = tk.history(period="5d")
-            if not df.empty and len(df) >= 2:
-                cur_price = df['Close'].iloc[-1]
-                prev_price = df['Close'].iloc[-2]
-                change = ((cur_price - prev_price) / prev_price) * 100
-                price_data += f"・{item}: {cur_price:,.1f} ({change:+.2f}%)\n"
+            df = yf.Ticker(ticker).history(period="2d")
+            if len(df) >= 2:
+                cur = df['Close'].iloc[-1]
+                prev = df['Close'].iloc[-2]
+                chg = ((cur - prev) / prev) * 100
+                price_data += f"・{item}: {cur:,.1f} ({chg:+.2f}%)\n"
         except: continue
     return price_data
 
 async def generate_voice(text):
-    clean_text = text.replace("#", "").replace("*", "").replace(">", " ")
-    communicate = edge_tts.Communicate(clean_text, "ja-JP-NanamiNeural", rate="+30%")
+    communicate = edge_tts.Communicate(text.replace("#", ""), "ja-JP-NanamiNeural", rate="+30%")
     audio_data = b""
     async for chunk in communicate.stream():
         if chunk["type"] == "audio": audio_data += chunk["data"]
@@ -82,269 +63,151 @@ async def generate_voice(text):
 
 def get_all_news(hours):
     rss_urls = [
-        "https://news.yahoo.co.jp/rss/topics/business.xml", 
-        "https://news.yahoo.co.jp/rss/topics/world.xml", 
-        "https://jp.reuters.com/rss/businessNews", 
-        "https://jp.reuters.com/rss/worldNews", 
-        "https://prtimes.jp/index.rdf",
+        "https://news.yahoo.co.jp/rss/topics/business.xml",
+        "https://jp.reuters.com/rss/businessNews",
         "https://finance.yahoo.com/news/rssindex",
         "https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=10000664"
     ]
-    news_list, seen_links = [], set()
-    now = datetime.now(timezone.utc)
-    time_threshold = now - timedelta(hours=hours)
+    news_list, seen = [], set()
+    threshold = datetime.now(timezone.utc) - timedelta(hours=hours)
     for url in rss_urls:
-        try:
-            feed = feedparser.parse(url)
-            for entry in feed.entries[:100]:
-                pub_struct = entry.get("published_parsed") or entry.get("updated_parsed")
-                if pub_struct:
-                    pub_time = datetime.fromtimestamp(time.mktime(pub_struct), timezone.utc)
-                    if pub_time < time_threshold: continue
-                if entry.link in seen_links: continue
-                if "福島" in entry.title or "カメラ" in entry.title: continue
-                
-                if "yahoo.co.jp" in url: source_name = "Yahoo(JP)"
-                elif "yahoo.com" in url: source_name = "Yahoo(US)"
-                elif "reuters.com" in url: source_name = "ロイター"
-                elif "cnbc" in url: source_name = "CNBC(US)"
-                else: source_name = "PR TIMES"
-
-                news_list.append({"title": entry.title, "summary": entry.get("summary", ""), "link": entry.link, "source": source_name, "time": pub_time.astimezone(timezone(timedelta(hours=9))).strftime('%m/%d %H:%M') if pub_struct else "--:--"})
-                seen_links.add(entry.link)
-        except: continue
+        feed = feedparser.parse(url)
+        for entry in feed.entries[:30]:
+            if entry.link in seen: continue
+            news_list.append({
+                "title": entry.title,
+                "summary": entry.get("summary", ""),
+                "link": entry.link,
+                "source": "US" if "yahoo.com" in url or "cnbc" in url else "JP",
+                "time": entry.get("published", "")
+            })
+            seen.add(entry.link)
     return news_list
 
 def analyze_single_article(title, summary, api_key):
     genai.configure(api_key=api_key)
-    model = genai.GenerativeModel("gemini-3.1-flash-lite-preview")
-    prompt = f"この記事を投資家視点で端的に要約し、影響を予測してください。挨拶や免責文は一切不要。\n【出力フォーマット】\n【要約】（事実を3行で端的に）\n【対象】（影響を最も受ける「具体的な銘柄名」「セクター名」または「全体相場」を明記）\n【判定】ポジティブ / ネガティブ / 中立\n【予想インパクト】（対象に対して）+〇%上昇予測 / -〇%下落予測 など大胆に数値を提示\n【タイトル】: {title}\n【本文】: {summary}"
-    try: return model.generate_content(prompt).text
-    except:
-        try:
-            model = genai.GenerativeModel("gemini-pro")
-            return model.generate_content(prompt).text
-        except Exception as e: return f"エラー: {e}"
+    model = genai.GenerativeModel("gemini-1.5-flash")
+    prompt = f"投資家視点で要約し、影響を予測せよ。挨拶不要。\n【要約】3行\n【判定】ポジティブ/ネガティブ\n【タイトル】{title}\n【本文】{summary}"
+    return model.generate_content(prompt).text
 
 @st.cache_data(ttl=3600)
 def get_stock_data(ticker, per):
-    try:
-        tk = yf.Ticker(ticker)
-        df = tk.history(period=per)
-        if df.empty: return None
-        df['Change_Pct'] = df['Close'].pct_change() * 100
-        df['MA5'] = df['Close'].rolling(window=5).mean()
-        df['MA20'] = df['Close'].rolling(window=20).mean()
-        df['MA60'] = df['Close'].rolling(window=60).mean()
-        df['Color'] = df.apply(lambda row: '#00C896' if row['Close'] >= row['Open'] else '#F92855', axis=1)
-        return df
-    except: return None
+    df = yf.Ticker(ticker).history(period=per)
+    if df.empty: return None
+    df['Change_Pct'] = df['Close'].pct_change() * 100
+    df['MA5'] = df['Close'].rolling(window=5).mean()
+    df['MA20'] = df['Close'].rolling(window=20).mean()
+    df['MA60'] = df['Close'].rolling(window=60).mean()
+    df['Color'] = df.apply(lambda r: '#00C896' if r['Close'] >= r['Open'] else '#F92855', axis=1)
+    return df
+# --- サイドバー ---
+st.sidebar.markdown("### 🔄 アプリモード")
+app_mode = st.sidebar.radio("ツール選択", ["📰 ニュース・相場分析", "📈 急変動チャートAI照合"])
+api_key = st.sidebar.text_input("APIキー", type="password")
 
-# --- 共通サイドバー ---
-st.sidebar.markdown("### 🔄 アプリモード切替")
-app_mode = st.sidebar.radio("使いたいツールを選択してください", ["📰 ニュース・相場分析", "📈 急変動チャートAI照合"])
-st.sidebar.markdown("---")
-api_key = st.sidebar.text_input("APIキーを入力", type="password")
-st.sidebar.markdown("---")
-
-# ==========================================
-# モード1: ニュース・相場分析
-# ==========================================
 if app_mode == "📰 ニュース・相場分析":
     st.title("🌐 AI投資ニュース・プロ分析")
-    market_choice = st.sidebar.radio("分析対象を選択", ["日本株", "米国株", "先物・商品", "FX・為替"], horizontal=True)
-    hours_range = st.sidebar.slider("過去何時間分を取得しますか？", 1, 72, 24)
-    st.sidebar.markdown("---")
-    with st.sidebar.expander("🔍 注目セクターを選択"):
-        SECTOR_OPTIONS = ["防衛", "宇宙", "重工", "海運", "物流", "エネルギー", "資源・素材", "半導体", "ハイテク・AI", "金融・銀行", "商社", "自動車", "不動産", "電力・インフラ", "化学・素材"]
-        col_s1, col_s2 = st.columns(2)
-        if col_s1.button("全選択", key="sec_all"):
-            for s in SECTOR_OPTIONS: st.session_state[f"sec_{s}"] = True
-        if col_s2.button("全解除", key="sec_none"):
-            for s in SECTOR_OPTIONS: st.session_state[f"sec_{s}"] = False
-        selected_sectors = [s for s in SECTOR_OPTIONS if st.checkbox(s, key=f"sec_{s}", value=st.session_state.get(f"sec_{s}", False))]
-
-    st.sidebar.markdown("---")
-    st.sidebar.markdown("### 🎯 特定銘柄を深掘り")
-    narrow_stocks = st.sidebar.text_area("銘柄名・コードを入力（ここに入力がある場合は最優先）", placeholder="例: 三菱重工, NVDA")
+    market_choice = st.sidebar.radio("対象", ["日本株", "米国株", "先物・商品", "FX・為替"], horizontal=True)
+    hours = st.sidebar.slider("取得時間", 1, 72, 24)
+    narrow_stocks = st.sidebar.text_area("特定銘柄（最優先）")
 
     if "analysis_text" not in st.session_state: st.session_state.analysis_text = None
     if "fetched_news" not in st.session_state: st.session_state.fetched_news = []
     if "individual_summaries" not in st.session_state: st.session_state.individual_summaries = {}
-    if "messages" not in st.session_state: st.session_state.messages = []
-    if "chat_session" not in st.session_state: st.session_state.chat_session = None
 
-    if st.sidebar.button(f"{market_choice} 分析を開始"):
-        if not api_key: st.error("APIキーを入れてください。")
+    if st.sidebar.button("分析開始"):
+        if not api_key: st.error("APIキーを入力してください")
         else:
-            st.session_state.analysis_text = None
-            st.session_state.chat_session = None
-            st.session_state.messages = []
-            genai.configure(api_key=api_key)
-            with st.spinner("情報を戦略的に精査中..."):
-                try:
-                    news_data = get_all_news(hours_range)
-                    st.session_state.fetched_news = news_data
-                    st.session_state.individual_summaries = {}
-                    target_list = narrow_stocks if narrow_stocks else CORE_WATCHLIST.get(market_choice)
-                    realtime_prices = get_price_info(target_list, market_choice)
-                    all_news_text = "".join([f"No.{i}: {n['title']}\n{n['summary']}\n\n" for i, n in enumerate(news_data)])
-                    
-                    if narrow_stocks: policy = f"【厳守：銘柄指定モード】あなたは指定された『{narrow_stocks}』に関する情報のみを分析する。これ以外の銘柄や無関係なセクター情報は一切出力するな。"
-                    elif selected_sectors: policy = f"【厳守：セクター限定モード】選択されたセクター『{', '.join(selected_sectors)}』に関する情報のみを出力せよ。無関係な他セクターの情報は一切不要。"
-                    else: policy = f"【通常モード】注目銘柄（{target_list}）を中心に分析しつつ、材料が出た他銘柄もディスカバリーして幅広く報告せよ。"
-
-                    prompt = f"あなたはプロの投資アナリストです。以下の【絶対遵守ルール】に従って出力せよ。\n【絶対遵守ルール】\n1. 挨拶、前置き、免責文は一切書かず、すぐに結果を出力せよ。\n2. {policy}\n3. 【ハイブリッド出力】マクロニュースはセクターでまとめ、個別に大きな材料がある銘柄は個別に見出しを立てよ。\n4. 見出しは必ず **【銘柄名(コード) | 現在価格 | 騰落率】** とせよ。\n5. 各分析の冒頭に必ず **【判定：ポジティブ/ネガティブ/中立】** と **【予想インパクト：+〇%上昇予測 / -〇%下落予測】** を断言せよ。\n6. 経済指標や同業種の動向から「間接的な影響」と「テクニカル予測」を必ず考察せよ。FX時は経済指標を最重視せよ。\n7. 文末に必ず情報源として「(No.Xより)」と添えること。証券コードと混同厳禁。\n【現在の株価・騰落率】\n{realtime_prices}\nニュースリスト:\n{all_news_text}"
-                    
-                    try:
-                        model = genai.GenerativeModel("gemini-3.1-flash-lite-preview")
-                        chat = model.start_chat(history=[])
-                        response = chat.send_message(prompt)
-                    except:
-                        model = genai.GenerativeModel("gemini-pro")
-                        chat = model.start_chat(history=[])
-                        response = chat.send_message(prompt)
-                    
-                    if response.text:
-                        st.session_state.analysis_text = response.text
-                        st.session_state.chat_session = chat
-                    else: st.error("AIからの応答が空でした。")
-                except Exception as e: st.error(f"分析処理中にエラーが発生しました: {e}")
+            with st.spinner("情報を精査中..."):
+                news_data = get_all_news(hours)
+                st.session_state.fetched_news = news_data
+                target_list = narrow_stocks if narrow_stocks else CORE_WATCHLIST[market_choice]
+                prices = get_price_info(target_list, market_choice)
+                news_text = "\n".join([f"No.{i}: {n['title']}\n{n['summary']}" for i, n in enumerate(news_data)])
+                
+                genai.configure(api_key=api_key)
+                model = genai.GenerativeModel("gemini-1.5-flash")
+                prompt = f"プロのアナリストとして、{target_list}を中心に分析せよ。挨拶・免責不要。見出しは【銘柄名 | 現在値 | 騰落率】。判定とインパクトを断言せよ。\n価格データ:\n{prices}\nニュース:\n{news_text}"
+                response = model.generate_content(prompt)
+                st.session_state.analysis_text = response.text
 
     if st.session_state.analysis_text:
-        col1, col2 = st.columns([1, 1])
-        with col1:
+        c1, c2 = st.columns(2)
+        with c1:
             st.subheader("📊 ニュースフィード")
-            with st.container(height=800):
-                for i, n in enumerate(st.session_state.fetched_news):
-                    with st.expander(f"No.{i}: 📌 [{n['time']}] {n['source']} - {n['title']}"):
-                        st.write(n['summary'])
-                        if st.button(f"✨ AI要約 (No.{i})", key=f"btn_news_{i}"):
-                            with st.spinner("要約中..."): st.session_state.individual_summaries[i] = analyze_single_article(n['title'], n['summary'], api_key)
-                        if i in st.session_state.individual_summaries: st.info(st.session_state.individual_summaries[i])
-                        st.link_button("全文へ", n['link'])
-        with col2:
+            for i, n in enumerate(st.session_state.fetched_news):
+                with st.expander(f"No.{i}: [{n['source']}] {n['title']}"):
+                    st.write(n['summary'])
+                    if st.button(f"要約 (No.{i})", key=f"sum_{i}"):
+                        st.session_state.individual_summaries[i] = analyze_single_article(n['title'], n['summary'], api_key)
+                    if i in st.session_state.individual_summaries: st.info(st.session_state.individual_summaries[i])
+                    st.link_button("全文へ", n['link'])
+        with c2:
             st.subheader("🤖 AI戦略分析")
-            with st.container(height=800):
-                with st.spinner("音声を生成中..."):
-                    try:
-                        audio_bytes = asyncio.run(generate_voice(st.session_state.analysis_text))
-                        st.audio(audio_bytes, format='audio/mp3')
-                    except Exception: st.warning("音声生成をスキップしました。")
-                st.write(st.session_state.analysis_text)
-                st.markdown("---")
-                for m in st.session_state.messages:
-                    with st.chat_message(m["role"]): st.markdown(m["content"])
-                if q := st.chat_input("さらに深掘り..."):
-                    st.session_state.messages.append({"role": "user", "content": q})
-                    with st.chat_message("user"): st.markdown(q)
-                    with st.chat_message("assistant"):
-                        if st.session_state.chat_session:
-                            try:
-                                resp = st.session_state.chat_session.send_message(q)
-                                st.markdown(resp.text)
-                                st.session_state.messages.append({"role": "assistant", "content": resp.text})
-                            except Exception as e: st.error(f"チャットエラー: {e}")
-                        else: st.error("分析を開始してください。")
-# ==========================================
-# モード2: 急変動チャート分析
-# ==========================================
+            if st.button("音声を再生"):
+                audio = asyncio.run(generate_voice(st.session_state.analysis_text))
+                st.audio(audio, format='audio/mp3')
+            st.write(st.session_state.analysis_text)
 elif app_mode == "📈 急変動チャートAI照合":
     st.title("📈 急変動チャート ＆ AIテクニカル予想")
-    st.info("💡 ヒント: チャート上の「▼マーク」の急変理由は下のリストから確認できます")
+    st.sidebar.markdown("### ⚙️ 設定")
+    market_type = st.sidebar.radio("市場", ["日本株", "米国株", "FX"])
+    target = st.sidebar.text_input("銘柄名・コード", value="三菱重工")
+    period = st.sidebar.selectbox("期間", ["3mo", "6mo", "1y", "2y"], index=1)
+    threshold = st.sidebar.slider("検知ライン(%)", 1.0, 20.0, 5.0, 0.5)
 
-    st.sidebar.markdown("### ⚙️ チャート検知設定")
-    market_type = st.sidebar.radio("市場を選択", ["日本株", "米国株", "FX"])
+    # 銘柄名からの変換
+    raw_target = target.strip()
+    ticker = STOCK_NAME_MAP.get(raw_target, raw_target)
     
-    if market_type == "日本株":
-        target_stock = st.sidebar.text_input("銘柄名・コードを入力", value="三菱重工", help="例: 三菱重工, トヨタ, 7011")
-    elif market_type == "米国株":
-        target_stock = st.sidebar.text_input("銘柄名・ティッカーを入力", value="NVDA", help="例: エヌビディア, AAPL")
-    else:
-        target_stock = st.sidebar.text_input("通貨ペア", value="USD/JPY", help="例: USD/JPY, EUR/USD")
+    if market_type == "日本株" and ticker.isdigit(): ticker += ".T"
+    elif market_type == "FX": ticker = ticker.replace("/", "") + "=X"
+    elif market_type == "米国株" and raw_target not in STOCK_NAME_MAP:
+        try:
+            res = requests.get(f"https://query2.finance.yahoo.com/v1/finance/search?q={raw_target}", headers={'User-Agent': 'Mozilla/5.0'}).json()
+            if res.get('quotes'): ticker = res['quotes'][0]['symbol']
+        except: pass
+
+    df = get_stock_data(ticker, period)
+
+    if df is not None:
+        # チャート表示
+        fig = make_subplots(rows=2, cols=1, shared_xaxes=True, row_heights=[0.7, 0.3], vertical_spacing=0.03)
+        fig.add_trace(go.Candlestick(x=df.index, open=df['Open'], high=df['High'], low=df['Low'], close=df['Close'], increasing_line_color='#00C896', decreasing_line_color='#F92855'), row=1, col=1)
+        fig.add_trace(go.Bar(x=df.index, y=df['Volume'], marker_color=df['Color']), row=2, col=1)
         
-    period = st.sidebar.selectbox("表示期間", ["3mo", "6mo", "1y", "2y"], index=1)
-    threshold = st.sidebar.slider("急変動ライン（±％）", min_value=1.0, max_value=20.0, value=5.0, step=0.5)
-
-    raw_target = target_stock.strip()
-    raw_target_lower = raw_target.lower()
-    ticker_symbol = raw_target
-
-    if raw_target_lower in STOCK_NAME_MAP:
-        ticker_symbol = STOCK_NAME_MAP[raw_target_lower]
-
-    if market_type == "日本株":
-        if ticker_symbol.isdigit() and len(ticker_symbol) == 4:
-            ticker_symbol = f"{ticker_symbol}.T"
-        elif len(ticker_symbol) == 4 and ticker_symbol[:-1].isdigit() and ticker_symbol[-1].isalpha():
-            ticker_symbol = f"{ticker_symbol}.T"
-    elif market_type == "FX":
-        ticker_symbol = ticker_symbol.replace("/", "").replace(" ", "")
-        if not ticker_symbol.endswith("=X"): 
-            ticker_symbol += "=X"
-    else: 
-        if raw_target_lower not in STOCK_NAME_MAP:
-            try:
-                url = f"https://query2.finance.yahoo.com/v1/finance/search?q={raw_target}"
-                res = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=3).json()
-                if res.get('quotes') and len(res['quotes']) > 0:
-                    ticker_symbol = res['quotes'][0]['symbol']
-            except: pass
-
-    df = get_stock_data(ticker_symbol, period)
-
-    if df is not None and not df.empty:
-        fig = make_subplots(rows=2, cols=1, shared_xaxes=True, row_heights=[0.75, 0.25], vertical_spacing=0.03)
-        fig.add_trace(go.Candlestick(x=df.index, open=df['Open'], high=df['High'], low=df['Low'], close=df['Close'], increasing_line_color='#00C896', decreasing_line_color='#F92855', name="価格"), row=1, col=1)
-        fig.add_trace(go.Scatter(x=df.index, y=df['MA5'], line=dict(color='#F2B33D', width=1.2), name='MA5'), row=1, col=1)
-        fig.add_trace(go.Scatter(x=df.index, y=df['MA20'], line=dict(color='#8A5EE6', width=1.2), name='MA20'), row=1, col=1)
-        fig.add_trace(go.Scatter(x=df.index, y=df['MA60'], line=dict(color='#3283F6', width=1.2), name='MA60'), row=1, col=1)
-        fig.add_trace(go.Bar(x=df.index, y=df['Volume'], marker_color=df['Color'], name="出来高"), row=2, col=1)
-
-        volatile_days = df[df['Change_Pct'].abs() >= threshold]
-        if not volatile_days.empty:
-            fig.add_trace(go.Scatter(x=volatile_days.index, y=volatile_days['High'] * 1.02, mode='markers+text', marker=dict(symbol='triangle-down', size=12, color='white'), text=[f"{val:+.1f}%" for val in volatile_days['Change_Pct']], textfont=dict(color="white"), textposition="top center", name="急変動"), row=1, col=1)
-
-        fig.update_layout(template='plotly_dark', title=f"【{target_stock} ({ticker_symbol})】 日足チャート", xaxis_rangeslider_visible=False, height=500, plot_bgcolor='#131722', paper_bgcolor='#131722')
+        v_days = df[df['Change_Pct'].abs() >= threshold]
+        if not v_days.empty:
+            fig.add_trace(go.Scatter(x=v_days.index, y=v_days['High'] * 1.02, mode='markers+text', marker=dict(symbol='triangle-down', size=10, color='white'), text=[f"{x:+.1f}%" for x in v_days['Change_Pct']], textposition="top center"), row=1, col=1)
+        
+        fig.update_layout(template='plotly_dark', xaxis_rangeslider_visible=False, height=600)
         st.plotly_chart(fig, use_container_width=True)
 
+        # AIテクニカル分析ボタン
         st.markdown("---")
-        st.subheader("🔮 今のチャートから未来を予想（テクニカルAI分析）")
-        if st.button("AIにチャートパターンを分析させる", type="primary"):
-            if not api_key: st.error("左のサイドバーにAPIキーを入力してください。")
+        st.subheader("🔮 AIテクニカル予想")
+        if st.button("チャートパターンを分析", type="primary"):
+            if not api_key: st.error("APIキーを入力してください")
             else:
-                chart_str = df.tail(60)[['Open', 'High', 'Low', 'Close', 'Volume']].to_string()
                 genai.configure(api_key=api_key)
-                try: model = genai.GenerativeModel("gemini-3.1-flash-lite-preview")
-                except: model = genai.GenerativeModel("gemini-pro")
-                prompt = f"あなたはプロのテクニカルアナリストです。以下のデータは銘柄「{target_stock}」の直近60日間の四本値と出来高です。1. 現在形成されている「チャートパターン」を見つけること。2. それを踏まえた今後の短期的な株価予想。必ず冒頭で【判定: 上昇予測 / 下落予測 / もみ合い】を断言すること。ショートの推奨は絶対に行わないこと。\n{chart_str}"
-                with st.spinner("AIがチャートの形状を分析中..."):
-                    try: st.info(model.generate_content(prompt).text)
-                    except Exception as e: st.error(f"分析エラー: {e}")
+                model = genai.GenerativeModel("gemini-1.5-flash")
+                chart_info = df.tail(60)[['Open', 'High', 'Low', 'Close', 'Volume']].to_string()
+                prompt = f"プロの視点で「{target}」のチャートパターンを分析し、今後の予想をせよ。冒頭で【判定: 上昇/下落/もみ合い】を断言。空売り推奨禁止。挨拶不要。\n{chart_info}"
+                with st.spinner("分析中..."): st.info(model.generate_content(prompt).text)
 
+        # 答え合わせ（新しい順）
         st.markdown("---")
-        st.subheader(f"⚠️ 過去の急変動の答え合わせ（±{threshold}%以上）")
-        if volatile_days.empty:
-            st.info("大きく動いた日はありませんでした。")
+        st.subheader(f"⚠️ 過去の急変動の理由 (±{threshold}%以上)")
+        if v_days.empty: st.info("該当なし")
         else:
-            for date, row in volatile_days.sort_index(ascending=False).iterrows():
-                d_str = date.strftime('%Y年%m月%d日')
+            for date, row in v_days.sort_index(ascending=False).iterrows():
+                d_str = date.strftime('%Y/%m/%d')
                 chg = row['Change_Pct']
-                icon, sign = ("🟢", "+") if chg > 0 else ("🔴", "")
-                st.markdown(f"### {icon} {d_str} ┃ {sign}{chg:.2f}%")
-                st.write(f"終値: ￥{row['Close']:,.1f}")
-                if st.button(f"🔍 この日のニュースと材料をAIで照合する", key=f"btn_{d_str}", use_container_width=True):
-                    if not api_key: st.error("APIキーを入力してください。")
-                    else:
-                        genai.configure(api_key=api_key)
-                        try: model = genai.GenerativeModel("gemini-3.1-flash-lite-preview")
-                        except: model = genai.GenerativeModel("gemini-pro")
-                        prompt = f"銘柄「{target_stock}」が【{d_str}】に前日比 {sign}{chg:.2f}% と急変動しました。この日に発表された決算、IR、ニュースなどを特定し、なぜ動いたのか解説してください。挨拶不要、ショート提案禁止。材料が【ポジティブ / ネガティブ】どちらか断言してください。"
-                        with st.spinner(f"{d_str} の過去ニュースを検索・分析中..."):
-                            try: st.write(model.generate_content(prompt).text)
-                            except Exception as e: st.error(f"分析エラー: {e}")
+                st.markdown(f"### {'🟢' if chg > 0 else '🔴'} {d_str} ┃ {chg:+.2f}%")
+                if st.button(f"🔍 {d_str} の変動理由を調査", key=f"q_{d_str}"):
+                    genai.configure(api_key=api_key)
+                    model = genai.GenerativeModel("gemini-1.5-flash")
+                    prompt = f"銘柄「{target}」が{d_str}に{chg:+.2f}%動いた理由を特定せよ。挨拶不要。材料がポジティブかネガティブか断言せよ。"
+                    with st.spinner("調査中..."): st.write(model.generate_content(prompt).text)
                 st.divider()
-    else:
-        st.warning(f"「{target_stock}」のデータが取得できませんでした。銘柄名やティッカーを変えてみてください。")
-
-# --- END OF FILE ---
+    else: st.warning("データを取得できませんでした。")
