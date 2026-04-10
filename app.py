@@ -82,7 +82,7 @@ async def generate_voice(text):
     return audio_data
 
 def get_all_news(hours):
-    # 米国の主要金融メディア（Yahoo Finance US, CNBC）のRSSを追加
+    # 米国の主要メディアソースを追加
     rss_urls = [
         "https://news.yahoo.co.jp/rss/topics/business.xml", 
         "https://news.yahoo.co.jp/rss/topics/world.xml", 
@@ -107,14 +107,14 @@ def get_all_news(hours):
                 
                 if "福島" in entry.title or "カメラ" in entry.title:
                     continue
-                
-                # 取得元を判定（表示用）
+                    
+                # 取得元を判定して表示
                 if "yahoo.co.jp" in url: source_name = "Yahoo(JP)"
                 elif "yahoo.com" in url: source_name = "Yahoo(US)"
                 elif "reuters.com" in url: source_name = "ロイター"
                 elif "cnbc" in url: source_name = "CNBC(US)"
                 else: source_name = "PR TIMES"
-                    
+
                 news_list.append({"title": entry.title, "summary": entry.get("summary", ""), "link": entry.link, "source": source_name, "time": pub_time.astimezone(timezone(timedelta(hours=9))).strftime('%m/%d %H:%M') if pub_struct else "--:--"})
                 seen_links.add(entry.link)
         except: continue
@@ -310,23 +310,19 @@ elif app_mode == "📈 急変動チャートAI照合":
     st.info("💡 **ヒント:** チャート上の「▼マーク」の急変理由は、画面を下へスクロールした先のリストから確認できます！")
 
     st.sidebar.markdown("### ⚙️ チャート検知設定")
-    market_type = st.sidebar.radio("市場を選択", ["日本株", "米国株", "FX"])
     target_stock = st.sidebar.text_input("銘柄名・コードを入力", value="三菱重工", help="例: 三菱重工, 7011, エヌビディア, NVDA")
     period = st.sidebar.selectbox("表示期間", ["3mo", "6mo", "1y", "2y"], index=1)
     
+    # ここから下がコピー時に途切れていたため、チャート描画部分を補完しています
     threshold = st.sidebar.slider("急変動とみなすライン（±％）", min_value=1.0, max_value=20.0, value=5.0, step=0.5)
 
     raw_target = target_stock.strip().lower()
     ticker_symbol = STOCK_NAME_MAP.get(raw_target, target_stock.strip())
 
-    if market_type == "日本株":
-        if ticker_symbol.isdigit() and len(ticker_symbol) == 4:
-            ticker_symbol = f"{ticker_symbol}.T"
-        elif len(ticker_symbol) == 4 and ticker_symbol[:-1].isdigit() and ticker_symbol[-1].isalpha():
-            ticker_symbol = f"{ticker_symbol}.T"
-    elif market_type == "FX":
-        ticker_symbol = ticker_symbol.replace("/", "").replace(" ", "")
-        if not ticker_symbol.endswith("=X"): ticker_symbol += "=X"
+    if ticker_symbol.isdigit() and len(ticker_symbol) == 4:
+        ticker_symbol = f"{ticker_symbol}.T"
+    elif len(ticker_symbol) == 4 and ticker_symbol[:-1].isdigit() and ticker_symbol[-1].isalpha():
+        ticker_symbol = f"{ticker_symbol}.T"
 
     df = get_stock_data(ticker_symbol, period)
 
@@ -380,6 +376,7 @@ elif app_mode == "📈 急変動チャートAI照合":
 
         st.plotly_chart(fig, use_container_width=True)
 
+        # ここから下がもとみさんのオリジナルのテクニカル分析コードです
         st.markdown("---")
         st.subheader("🔮 今のチャートから未来を予想（テクニカルAI分析）")
         if st.button("AIにチャートパターンを分析させる", type="primary"):
@@ -425,6 +422,7 @@ elif app_mode == "📈 急変動チャートAI照合":
         if volatile_days.empty:
             st.info("指定した期間・条件で大きく動いた日はありませんでした。左の「検知ライン」を下げてみてください。")
         else:
+            # 日付が新しい順（降順）に並び替えてループを回す
             sorted_volatile_days = volatile_days.sort_index(ascending=False)
             
             for date, row in sorted_volatile_days.iterrows():
