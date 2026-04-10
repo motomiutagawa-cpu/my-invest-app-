@@ -82,7 +82,16 @@ async def generate_voice(text):
     return audio_data
 
 def get_all_news(hours):
-    rss_urls = ["https://news.yahoo.co.jp/rss/topics/business.xml", "https://news.yahoo.co.jp/rss/topics/world.xml", "https://jp.reuters.com/rss/businessNews", "https://jp.reuters.com/rss/worldNews", "https://prtimes.jp/index.rdf"]
+    # 米国の主要金融メディア（Yahoo Finance US, CNBC）のRSSを追加
+    rss_urls = [
+        "https://news.yahoo.co.jp/rss/topics/business.xml", 
+        "https://news.yahoo.co.jp/rss/topics/world.xml", 
+        "https://jp.reuters.com/rss/businessNews", 
+        "https://jp.reuters.com/rss/worldNews", 
+        "https://prtimes.jp/index.rdf",
+        "https://finance.yahoo.com/news/rssindex",
+        "https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=10000664"
+    ]
     news_list, seen_links = [], set()
     now = datetime.now(timezone.utc)
     time_threshold = now - timedelta(hours=hours)
@@ -98,8 +107,15 @@ def get_all_news(hours):
                 
                 if "福島" in entry.title or "カメラ" in entry.title:
                     continue
+                
+                # 取得元を判定（表示用）
+                if "yahoo.co.jp" in url: source_name = "Yahoo(JP)"
+                elif "yahoo.com" in url: source_name = "Yahoo(US)"
+                elif "reuters.com" in url: source_name = "ロイター"
+                elif "cnbc" in url: source_name = "CNBC(US)"
+                else: source_name = "PR TIMES"
                     
-                news_list.append({"title": entry.title, "summary": entry.get("summary", ""), "link": entry.link, "source": "Yahoo" if "yahoo" in url else "ロイター" if "reuters" in url else "PR TIMES", "time": pub_time.astimezone(timezone(timedelta(hours=9))).strftime('%m/%d %H:%M') if pub_struct else "--:--"})
+                news_list.append({"title": entry.title, "summary": entry.get("summary", ""), "link": entry.link, "source": source_name, "time": pub_time.astimezone(timezone(timedelta(hours=9))).strftime('%m/%d %H:%M') if pub_struct else "--:--"})
                 seen_links.add(entry.link)
         except: continue
     return news_list
@@ -409,7 +425,6 @@ elif app_mode == "📈 急変動チャートAI照合":
         if volatile_days.empty:
             st.info("指定した期間・条件で大きく動いた日はありませんでした。左の「検知ライン」を下げてみてください。")
         else:
-            # 【新機能】日付が新しい順（降順）に並び替えてループを回す
             sorted_volatile_days = volatile_days.sort_index(ascending=False)
             
             for date, row in sorted_volatile_days.iterrows():
